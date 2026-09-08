@@ -6,9 +6,12 @@ from Claude Code.
 ## Install
 
 ```
-/plugin marketplace add geins/geins-claude-plugins
+/plugin marketplace add jmandery/geins-claude-plugins
 /plugin install geins@geins
 ```
+
+`geins@geins` is `<plugin>@<marketplace>`, both named in the manifests, so it stays the same
+wherever the repository is hosted.
 
 If the install summary says `Run /reload-plugins to activate.`, run that.
 
