@@ -1,0 +1,14 @@
+{
+  "name": "geins",
+  "description": "Claude Code plugins for working with Geins: Management API access, with more to come.",
+  "owner": {
+    "name": "Geins"
+  },
+  "plugins": [
+    {
+      "name": "geins",
+      "source": "./plugins/geins",
+      "description": "Call the Geins Management API from any repository: read and write products, orders, users, campaigns and prices, with the full endpoint reference bundled."
+    }
+  ]
+}
