@@ -1,5 +1,5 @@
 {
-  "name": "geins",
+  "name": "geins-plugins",
   "description": "Claude Code plugins for working with Geins: Management API access, with more to come.",
   "owner": {
     "name": "Geins"
