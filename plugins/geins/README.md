@@ -35,13 +35,16 @@ a second account (`_<PROFILE>` suffix, used with `--profile`) or retarget the ba
 Credentials are never written to the repository, and the skill instructs Claude never to read or
 print those files.
 
-### Keeping credentials out of files entirely
+## Keeping credentials out of files entirely
 
-Optional, and recommended once more than one person uses this. Configure a `credentialCommand` and
-the plugin fetches credentials from your vault at call time instead of reading a file:
+Optional, and worth doing once more than one person uses this. Configure a `credentialCommand` and
+the plugin fetches credentials from your vault at call time instead of reading them off disk.
 
-```json
-// ~/.geins/config.json, or .geins.json in a repository. No secrets in here.
+Config says only *where* to fetch from, so it contains no secrets and is safe to read, print and
+commit:
+
+```jsonc
+// ~/.geins/config.json, or .geins.json in a repository
 {
   "profiles": {
     "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" },
@@ -50,26 +53,129 @@ the plugin fetches credentials from your vault at call time instead of reading a
 }
 ```
 
-The command prints either JSON with `username`, `password` and `apiKey`, or `key=value` lines using
-`GEINS_MGMT_API_USER`, `GEINS_MGMT_API_PWD` and `GEINS_MGMT_API_KEY`. Anything that writes a secret
-to stdout works, with no dependency added to the plugin:
-
-| Store | Command |
-| --- | --- |
-| Azure Key Vault | `az keyvault secret show --vault-name <kv> --name <secret> --query value -o tsv` |
-| 1Password | `op read "op://Private/geins-mgmtapi/credential"` |
-| macOS Keychain | `security find-generic-password -s geins-mgmtapi -a default -w` |
-| Linux libsecret | `secret-tool lookup service geins-mgmtapi account default` |
-| Windows Credential Manager | `powershell.exe -NoProfile -Command "..."`, using the built-in 5.1 |
-
 Resolution order is environment variables, then `credentialCommand`, then the `.env` files, so
 adding a command changes nothing for anyone still using a file. The command runs once per process,
-so a paged read costs one vault call rather than one per request.
+so a paged read costs one vault call rather than one per HTTP request, and a keychain prompts once.
 
-Check which source answers without printing any value:
+### What the command must print
+
+Either JSON:
+
+```json
+{ "username": "api-user", "password": "...", "apiKey": "..." }
+```
+
+or `key=value` lines:
+
+```
+GEINS_MGMT_API_USER=api-user
+GEINS_MGMT_API_PWD=...
+GEINS_MGMT_API_KEY=...
+```
+
+Store all three as **one** secret in whatever shape suits your vault. One secret means one fetch,
+one thing to rotate, and one thing to grant access to. The examples below all store the JSON form.
+
+Only stdout is read. Anything the command writes to stderr is shown when it fails, and its stdout
+never appears in an error message, because that is the secret.
+
+### Azure Key Vault
+
+Central, revocable, and `az login` is usually already on the machine. The best fit for a team.
+
+```bash
+# store, once, by whoever administers the vault
+az keyvault secret set --vault-name geins-kv --name mgmtapi-labs \
+  --value '{"username":"api-user","password":"...","apiKey":"..."}'
+
+# grant each person read access to that one secret
+az role assignment create --role "Key Vault Secrets User" \
+  --assignee person@example.com \
+  --scope "$(az keyvault show --name geins-kv --query id -o tsv)/secrets/mgmtapi-labs"
+```
+
+```json
+{ "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" }
+```
+
+### 1Password
+
+```bash
+op item create --category=login --title='geins-mgmtapi' \
+  'credential[text]={"username":"api-user","password":"...","apiKey":"..."}'
+```
+
+```json
+{ "credentialCommand": "op read \"op://Private/geins-mgmtapi/credential\"" }
+```
+
+### macOS Keychain
+
+No extra tooling: `security` ships with macOS.
+
+```bash
+security add-generic-password -s geins-mgmtapi -a default \
+  -w '{"username":"api-user","password":"...","apiKey":"..."}'
+```
+
+```json
+{ "credentialCommand": "security find-generic-password -s geins-mgmtapi -a default -w" }
+```
+
+### Linux, libsecret
+
+Needs `secret-tool` from `libsecret-tools`, and an unlocked keyring in the session.
+
+```bash
+secret-tool store --label='Geins Management API' service geins-mgmtapi account default
+# paste the JSON on stdin
+```
+
+```json
+{ "credentialCommand": "secret-tool lookup service geins-mgmtapi account default" }
+```
+
+### Windows, DPAPI file
+
+Windows Credential Manager has no built-in CLI that reads a secret back out, so the dependency-free
+option is a DPAPI-encrypted file. The ciphertext is bound to your Windows user account, so another
+user on the same machine cannot decrypt it.
+
+```powershell
+# store, once
+'{"username":"api-user","password":"...","apiKey":"..."}' |
+  ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString |
+  Set-Content "$env:USERPROFILE\.geins\credential.dpapi"
+```
+
+```json
+{ "credentialCommand": "set \"PSModulePath=\" && powershell.exe -NoProfile -Command \"[Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((Get-Content $env:USERPROFILE\\.geins\\credential.dpapi | ConvertTo-SecureString)))\"" }
+```
+
+The `set "PSModulePath="` prefix is not optional. Without it, a PowerShell 7 parent leaks its
+module path into the built-in 5.1 and `ConvertTo-SecureString` fails to load with a module or
+type-data error.
+
+If `az` or `op` is available on your Windows machines, prefer one of those instead: same command on
+every platform, and nothing encrypted on local disk.
+
+### CI
+
+Set `GEINS_MGMT_API_USER`, `GEINS_MGMT_API_PWD` and `GEINS_MGMT_API_KEY` as environment variables
+from your runner's secret store. They outrank both the command and the files, so CI needs no
+config at all.
+
+### Checking it works
+
+Names the resolving source and proves all three values arrive, printing no value:
 
 ```
 node scripts/get.js --check-credentials [--profile <name>]
+```
+
+```
+profile 'default' resolves from credentialCommand: az keyvault secret show --vault-name geins-kv ...
+All three values resolved.
 ```
 
 ## Requirements

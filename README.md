@@ -15,17 +15,55 @@ same wherever the repository is hosted.
 
 If the install summary says `Run /reload-plugins to activate.`, run that.
 
-Then store your API credentials once, in `~/.geins/.env`:
+## Credentials
+
+Three values from an API User in Geins Merchant Center, supplied one of three ways. First match
+wins:
+
+| | Source | Use it for |
+| --- | --- | --- |
+| 1 | `GEINS_MGMT_API_USER`, `GEINS_MGMT_API_PWD`, `GEINS_MGMT_API_KEY` environment variables | CI, and one-off overrides |
+| 2 | a `credentialCommand` that fetches them from a vault | teams, and anywhere a plaintext file is not acceptable |
+| 3 | `.env.geins` in the repository, then `~/.geins/.env` | getting started on one machine |
+
+### The quick way
 
 ```
-GEINS_MGMT_API_USER=
-GEINS_MGMT_API_PWD=
-GEINS_MGMT_API_KEY=
+mkdir -p ~/.geins
+printf 'GEINS_MGMT_API_USER=\nGEINS_MGMT_API_PWD=\nGEINS_MGMT_API_KEY=\n' > ~/.geins/.env
+chmod 600 ~/.geins/.env
 ```
 
-Those come from an API User in Geins Merchant Center. That one file serves every repository you
-open. See [`plugins/geins/.env.geins.example`](plugins/geins/.env.geins.example) for the extra keys
-that add a second account or point at a staging host.
+Fill in the three values. That one file serves every repository you open, on every platform, since
+the path comes from the OS home directory. On Windows it is `%USERPROFILE%\.geins\.env` and the
+profile's own ACL already restricts it to you. See
+[`plugins/geins/.env.geins.example`](plugins/geins/.env.geins.example) for the extra keys that add
+a second account or point at a staging host.
+
+### The safer way
+
+A file the plugin can read is a file it can print. Point a profile at your vault instead and no
+secret touches disk:
+
+```jsonc
+// ~/.geins/config.json — where to fetch from, not what to fetch. No secrets in here.
+{
+  "profiles": {
+    "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" }
+  }
+}
+```
+
+Worked examples for Azure Key Vault, 1Password, macOS Keychain, Linux libsecret, a Windows DPAPI
+file and CI are in
+[the plugin's README](plugins/geins/README.md#keeping-credentials-out-of-files-entirely), including
+how to store the secret in each.
+
+Verify whichever you chose, without printing anything:
+
+```
+node plugins/geins/skills/mgmtapi/scripts/get.js --check-credentials
+```
 
 ## Plugins
 
