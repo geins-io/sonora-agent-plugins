@@ -35,8 +35,8 @@ that add a second account or point at a staging host.
 
 ## Requirements
 
-PowerShell 7 (`pwsh`) on the PATH. Nothing else: the endpoint reference ships generated, so no
-node, YAML parser or copy of the API spec is needed to use the plugin.
+Node 18 or later on the PATH. Nothing else: the scripts have no dependencies and the endpoint
+reference ships generated, so no install step, YAML parser or copy of the API spec is needed.
 
 ## Development
 

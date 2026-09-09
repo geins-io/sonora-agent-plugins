@@ -1,31 +1,31 @@
 ---
 name: mgmtapi
 description: Call the Geins Management API (mgmtapi.geins.io/API) to read or write products, orders, users, campaigns, prices, webhooks and more. Use whenever a task means talking to a live Geins account rather than changing local code.
-allowed-tools: Bash(pwsh -File ${CLAUDE_SKILL_DIR}/scripts/Get-GeinsApi.ps1 *)
+allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/get.js *)
 ---
 
 # Geins Management API
 
 Two entry points, split so reads run unprompted while every write asks. Never call the API with
-raw `curl` or `Invoke-RestMethod`: credentials would land in the command line and the transcript,
-and paging, batching and retries would be hand-rolled per task.
+raw `curl`: credentials would land in the command line and the transcript, and paging, batching
+and retries would be hand-rolled per task.
 
-Always invoke through `pwsh -File`, exactly as written below. That form is what the pre-approved
-read permission matches.
+Always invoke through `node`, exactly as written below. That form is what the pre-approved read
+permission matches.
 
 ## Reads
 
 ```
-pwsh -File ${CLAUDE_SKILL_DIR}/scripts/Get-GeinsApi.ps1 -Path "Product/1234" -Query "include=Names"
-pwsh -File ${CLAUDE_SKILL_DIR}/scripts/Get-GeinsApi.ps1 -Resource Brand -Filter '{"ExternalIds":["abc"]}'
-pwsh -File ${CLAUDE_SKILL_DIR}/scripts/Get-GeinsApi.ps1 -Resource Product -All -Filter '{"UpdatedAfter":"2026-09-01T00:00:00Z"}'
+node ${CLAUDE_SKILL_DIR}/scripts/get.js --path "Product/1234" --query include=Names
+node ${CLAUDE_SKILL_DIR}/scripts/get.js --resource Brand --filter '{"ExternalIds":["abc"]}'
+node ${CLAUDE_SKILL_DIR}/scripts/get.js --resource Product --all --filter '{"UpdatedAfter":"2026-09-01T00:00:00Z"}'
 ```
 
-`-Resource X` posts the filter to `X/Query`. Adding `-All` walks `X/Query/{page}` instead, which
-only Order, Product and User expose. Page size is 1000 and `-MaxPages` defaults to 100, so a run
-warns rather than truncating in silence.
+`--resource X` posts the filter to `X/Query`. Adding `--all` walks `X/Query/{page}` instead, which
+only Order, Product and User expose. Page size is 1000 and `--max-pages` defaults to 100, so a run
+warns rather than truncating in silence. Repeat `--query` for more than one value.
 
-Pages 2 and up must resend the `BatchId` that page 1 returned, not the filter. `-All` does that;
+Pages 2 and up must resend the `BatchId` that page 1 returned, not the filter. `--all` does that;
 a hand-rolled loop that resends the filter silently rereads page 1 forever.
 
 All three forms print JSON. Pipe to `jq` and select what the task needs instead of reading whole
@@ -34,11 +34,12 @@ payloads into context.
 ## Writes
 
 ```
-pwsh -File ${CLAUDE_SKILL_DIR}/scripts/Send-GeinsApi.ps1 -Method PUT -Path "Product/1234" -BodyFile ./product.json -Confirm:$false
+node ${CLAUDE_SKILL_DIR}/scripts/send.js --method PUT --path "Product/1234" --body-file ./product.json --confirm
 ```
 
-Without `-Confirm:$false` the script prints the request and sends nothing. Run it that way first
-and show the user the request. Use `-BodyFile` for anything beyond a couple of fields.
+Without `--confirm` the script prints the request and sends nothing. Run it that way first and show
+the user the request. Use `--body-file` for anything beyond a couple of fields. `send.js` refuses
+`GET`, so reads cannot arrive through the write path.
 
 Before any bulk write: read the affected set, report the count, and get the user to confirm that
 number. Never loop the write script over a set you have not counted and shown.
@@ -82,7 +83,7 @@ Three values from an API User in Geins Merchant Center, read in this order:
 
 The home file is the one to recommend, since it serves every repository. `.env.geins.example` in
 the plugin is the template. A second account is the same three keys suffixed with `_<PROFILE>`,
-reached with `-ProfileName <profile>`.
+reached with `--profile <profile>`.
 
 Never read, print or echo these files, and never include their values in output. The scripts
 resolve them; nothing else needs to.
@@ -90,9 +91,8 @@ resolve them; nothing else needs to.
 A 401 with `{"Message":"Unauthorized"}` means the credentials or API key are wrong for that
 account, not that the route is wrong.
 
-`scripts/Set-GeinsCredential.ps1` stores the same values in a SecretManagement vault instead, for
-anyone who would rather not keep a plaintext file. It needs a vault extension module installed,
-and the scripts check the files first either way.
+There is no vault or keychain integration. If a plaintext file is not acceptable, supply the three
+values as environment variables from whatever secret store you already use.
 
 ## Maintaining this skill
 

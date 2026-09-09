@@ -1,7 +1,7 @@
 {
   "name": "geins",
   "description": "Call the Geins Management API from any repository: read and write products, orders, users, campaigns and prices, with the full endpoint reference bundled.",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": {
     "name": "Geins"
   }

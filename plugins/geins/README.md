@@ -5,9 +5,9 @@ repository.
 
 ## What you get
 
-`/geins:mgmtapi` — Claude reads and writes your Geins account through two PowerShell entry points
-bundled with the skill, with the API's 162 endpoints across 21 resources documented locally so it
-picks the right route without probing.
+`/geins:mgmtapi` — Claude reads and writes your Geins account through two Node entry points bundled
+with the skill, with the API's 162 endpoints across 21 resources documented locally so it picks the
+right route without probing.
 
 Reads run without a permission prompt. Writes always prompt, and the skill requires a count and a
 preview before any bulk change.
@@ -30,14 +30,15 @@ GEINS_MGMT_API_KEY=
 
 A `.env.geins` in the repository you are working in is read first if present, and real environment
 variables win over both, so CI needs no file. Copy `.env.geins.example` for the extra keys that add
-a second account (`_<PROFILE>` suffix, used with `-ProfileName`) or retarget the base URL.
+a second account (`_<PROFILE>` suffix, used with `--profile`) or retarget the base URL.
 
 Credentials are never written to the repository, and the skill instructs Claude never to read or
 print those files.
 
 ## Requirements
 
-PowerShell 7 (`pwsh`) on the PATH.
+Node 18 or later on the PATH, for global `fetch`. The scripts have no dependencies, so there is no
+install step.
 
 ## Layout
 
@@ -46,12 +47,23 @@ skills/mgmtapi/
 ├── SKILL.md
 ├── references/        generated endpoint and schema reference, one file per resource
 └── scripts/
-    ├── GeinsApi.psm1          transport: auth, retries, paging, batching
-    ├── Get-GeinsApi.ps1       reads
-    ├── Send-GeinsApi.ps1      writes, confirmation required
-    ├── Set-GeinsCredential.ps1  optional SecretManagement vault storage
-    └── sync-api-spec.js       maintainer tool, regenerates references/
+    ├── geins-api.js       transport: credentials, auth, retries, paging, batching
+    ├── get.js             reads
+    ├── send.js            writes, --confirm required
+    └── sync-api-spec.js   maintainer tool, regenerates references/
 ```
+
+## Command line
+
+```
+node scripts/get.js  --path <route> [--query k=v]... [--profile <name>]
+node scripts/get.js  --resource <name> [--all] [--filter <json>] [--max-pages <n>]
+node scripts/send.js --method POST|PUT|PATCH|DELETE --path <route>
+                     [--body <json> | --body-file <path>] [--query k=v]... --confirm
+```
+
+`get.js` cannot mutate: it issues `GET`, or the `Query` endpoints that read via `POST`. `send.js`
+prints the request and sends nothing without `--confirm`, and refuses `GET` outright.
 
 ## Updating the reference
 
