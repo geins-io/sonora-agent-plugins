@@ -11,11 +11,15 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const DEFAULT_BASE_URL = 'https://mgmtapi.geins.io/API';
 const MAX_ATTEMPTS = 4;
+const CREDENTIAL_COMMAND_TIMEOUT_MS = 60000;
 
 let envFileValues = null;
+let configValues = null;
+const credentialCache = new Map();
 
 /**
  * Resolved against the caller's working directory, never __dirname: these scripts ship inside a
@@ -104,22 +108,206 @@ function profileSuffix(profile) {
   return `_${profile.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
 }
 
-function credentials(profile) {
-  const suffix = profileSuffix(profile);
-  const username = setting(`GEINS_MGMT_API_USER${suffix}`);
-  const password = setting(`GEINS_MGMT_API_PWD${suffix}`);
-  const apiKey = setting(`GEINS_MGMT_API_KEY${suffix}`);
+/** Config holds no secrets, only where to fetch them from, so it is safe to read and commit. */
+function configFilePaths() {
+  const paths = [];
 
-  if (username && password && apiKey) {
-    return { username, password, apiKey };
+  if (process.env.CLAUDE_PROJECT_DIR) {
+    paths.push(path.join(process.env.CLAUDE_PROJECT_DIR, '.geins.json'));
+  }
+
+  paths.push(path.join(process.cwd(), '.geins.json'));
+  paths.push(path.join(os.homedir(), '.geins', 'config.json'));
+
+  return paths;
+}
+
+function config() {
+  if (configValues !== null) {
+    return configValues;
+  }
+
+  configValues = {};
+
+  for (const file of configFilePaths()) {
+    if (!fs.existsSync(file)) {
+      continue;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (error) {
+      throw new Error(`${file} is not valid JSON: ${error.message}`);
+    }
+
+    for (const [profile, entry] of Object.entries(parsed.profiles || {})) {
+      if (!(profile in configValues)) {
+        configValues[profile] = entry;
+      }
+    }
+  }
+
+  return configValues;
+}
+
+function credentialCommand(profile) {
+  const fromEnvironment = process.env[`GEINS_MGMT_API_CREDENTIAL_COMMAND${profileSuffix(profile)}`];
+  if (fromEnvironment && fromEnvironment.trim() !== '') {
+    return fromEnvironment.trim();
+  }
+
+  const entry = config()[profile];
+  const configured = entry && entry.credentialCommand;
+  return configured && configured.trim() !== '' ? configured.trim() : null;
+}
+
+/**
+ * Accepts either a JSON object or .env-shaped lines, because vault CLIs are usually asked for a
+ * whole secret rather than three separate ones and teams store it in whichever shape suits them.
+ */
+function parseCredentialOutput(output, suffix) {
+  const text = output.trim();
+
+  if (text.startsWith('{')) {
+    const parsed = JSON.parse(text);
+    const pick = (...names) => names.map((name) => parsed[name]).find((value) => value);
+
+    return {
+      username: pick('username', 'user', `GEINS_MGMT_API_USER${suffix}`, 'GEINS_MGMT_API_USER'),
+      password: pick('password', 'pwd', `GEINS_MGMT_API_PWD${suffix}`, 'GEINS_MGMT_API_PWD'),
+      apiKey: pick('apiKey', 'apikey', 'key', `GEINS_MGMT_API_KEY${suffix}`, 'GEINS_MGMT_API_KEY'),
+    };
+  }
+
+  const values = {};
+  for (const line of text.split(/\r?\n/)) {
+    const separator = line.indexOf('=');
+    if (separator > 0) {
+      values[line.slice(0, separator).trim()] = line.slice(separator + 1).trim().replace(/^["']|["']$/g, '');
+    }
+  }
+
+  return {
+    username: values[`GEINS_MGMT_API_USER${suffix}`] || values.GEINS_MGMT_API_USER,
+    password: values[`GEINS_MGMT_API_PWD${suffix}`] || values.GEINS_MGMT_API_PWD,
+    apiKey: values[`GEINS_MGMT_API_KEY${suffix}`] || values.GEINS_MGMT_API_KEY,
+  };
+}
+
+/** Never include the command's stdout in an error: that is the secret. */
+function runCredentialCommand(command, profile) {
+  const suffix = profileSuffix(profile);
+  let output;
+
+  try {
+    output = execSync(command, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: CREDENTIAL_COMMAND_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    });
+  } catch (error) {
+    const stderr = error.stderr ? String(error.stderr).trim().slice(0, 1000) : '';
+    throw new Error(
+      `The credentialCommand for profile '${profile}' failed: ${command}\n${stderr || error.message}`
+    );
+  }
+
+  let credential;
+  try {
+    credential = parseCredentialOutput(output, suffix);
+  } catch (error) {
+    throw new Error(
+      `The credentialCommand for profile '${profile}' produced output that is neither JSON nor ` +
+        `key=value lines: ${error.message}`
+    );
+  }
+
+  if (!credential.username || !credential.password || !credential.apiKey) {
+    throw new Error(
+      `The credentialCommand for profile '${profile}' did not supply all three values. Return ` +
+        `JSON with username, password and apiKey, or key=value lines using GEINS_MGMT_API_USER, ` +
+        `GEINS_MGMT_API_PWD and GEINS_MGMT_API_KEY.`
+    );
+  }
+
+  return credential;
+}
+
+/**
+ * Environment variables first for CI, then a configured credentialCommand, then the .env files.
+ * Memoized per profile so a paged read resolves once instead of prompting a keychain per request.
+ */
+function credentials(profile) {
+  if (credentialCache.has(profile)) {
+    return credentialCache.get(profile);
+  }
+
+  const suffix = profileSuffix(profile);
+  const resolved = resolveCredentials(profile, suffix);
+  credentialCache.set(profile, resolved);
+  return resolved;
+}
+
+function resolveCredentials(profile, suffix) {
+  const fromEnvironment = {
+    username: process.env[`GEINS_MGMT_API_USER${suffix}`],
+    password: process.env[`GEINS_MGMT_API_PWD${suffix}`],
+    apiKey: process.env[`GEINS_MGMT_API_KEY${suffix}`],
+  };
+  if (fromEnvironment.username && fromEnvironment.password && fromEnvironment.apiKey) {
+    return fromEnvironment;
+  }
+
+  const command = credentialCommand(profile);
+  if (command) {
+    return runCredentialCommand(command, profile);
+  }
+
+  const fromFiles = {
+    username: setting(`GEINS_MGMT_API_USER${suffix}`),
+    password: setting(`GEINS_MGMT_API_PWD${suffix}`),
+    apiKey: setting(`GEINS_MGMT_API_KEY${suffix}`),
+  };
+  if (fromFiles.username && fromFiles.password && fromFiles.apiKey) {
+    return fromFiles;
   }
 
   const homeFile = path.join(os.homedir(), '.geins', '.env');
   throw new Error(
-    `No credentials for profile '${profile}'. Set GEINS_MGMT_API_USER${suffix}, ` +
-      `GEINS_MGMT_API_PWD${suffix} and GEINS_MGMT_API_KEY${suffix} in ${homeFile} to serve every ` +
-      `repository, or in a .env.geins in this repository. Searched: ${envFilePaths().join(', ')}`
+    `No credentials for profile '${profile}'. Either configure a credentialCommand for it in ` +
+      `${path.join(os.homedir(), '.geins', 'config.json')}, or set GEINS_MGMT_API_USER${suffix}, ` +
+      `GEINS_MGMT_API_PWD${suffix} and GEINS_MGMT_API_KEY${suffix} in ${homeFile}. ` +
+      `Searched: ${envFilePaths().join(', ')}`
   );
+}
+
+/** Reports which source answers for a profile, naming no values. */
+function credentialSource(profile) {
+  const suffix = profileSuffix(profile);
+
+  if (
+    process.env[`GEINS_MGMT_API_USER${suffix}`] &&
+    process.env[`GEINS_MGMT_API_PWD${suffix}`] &&
+    process.env[`GEINS_MGMT_API_KEY${suffix}`]
+  ) {
+    return { source: 'environment variables', detail: `GEINS_MGMT_API_*${suffix}` };
+  }
+
+  const command = credentialCommand(profile);
+  if (command) {
+    return { source: 'credentialCommand', detail: command };
+  }
+
+  for (const file of envFilePaths()) {
+    const values = parseEnvFile(file);
+    if (values[`GEINS_MGMT_API_USER${suffix}`] && values[`GEINS_MGMT_API_KEY${suffix}`]) {
+      return { source: 'env file', detail: file };
+    }
+  }
+
+  return { source: 'nothing', detail: `searched ${configFilePaths().join(', ')} and ${envFilePaths().join(', ')}` };
 }
 
 function authHeaders(credential) {
@@ -281,4 +469,4 @@ function fail(error) {
   process.exit(1);
 }
 
-module.exports = { request, queryAll, parseQueryPairs, parseArguments, fail };
+module.exports = { request, queryAll, parseQueryPairs, parseArguments, credentials, credentialSource, fail };

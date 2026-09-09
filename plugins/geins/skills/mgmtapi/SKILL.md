@@ -78,21 +78,47 @@ return a bare array instead.
 Three values from an API User in Geins Merchant Center, read in this order:
 
 1. `GEINS_MGMT_API_USER`, `GEINS_MGMT_API_PWD`, `GEINS_MGMT_API_KEY` in the environment
-2. `.env.geins` in the repository you are working in
-3. `~/.geins/.env`
+2. a `credentialCommand` configured for the profile, if there is one
+3. `.env.geins` in the repository you are working in, then `~/.geins/.env`
 
-The home file is the one to recommend, since it serves every repository. `.env.geins.example` in
-the plugin is the template. A second account is the same three keys suffixed with `_<PROFILE>`,
-reached with `--profile <profile>`.
+A second account is the same three keys suffixed with `_<PROFILE>`, reached with
+`--profile <profile>`.
 
-Never read, print or echo these files, and never include their values in output. The scripts
+Never read, print or echo the env files, and never include their values in output. The scripts
 resolve them; nothing else needs to.
+
+To find out which source answers, without printing any value:
+
+```
+node ${CLAUDE_SKILL_DIR}/scripts/get.js --check-credentials [--profile <name>]
+```
+
+### credentialCommand
+
+Optional. When configured, the plugin runs a command that fetches the credentials from a vault
+instead of reading them from a file, so nothing sensitive sits on disk. Config lives in
+`~/.geins/config.json`, or `.geins.json` in the repository, and holds no secrets itself:
+
+```json
+{
+  "profiles": {
+    "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" }
+  }
+}
+```
+
+The command prints either JSON with `username`, `password` and `apiKey`, or `key=value` lines
+using the three variable names. It runs once per process, so a paged read does not re-prompt a
+keychain per request.
+
+Config files are safe to read and show the user. The command string is not a secret; its output
+is, so never echo that.
 
 A 401 with `{"Message":"Unauthorized"}` means the credentials or API key are wrong for that
 account, not that the route is wrong.
 
-There is no vault or keychain integration. If a plaintext file is not acceptable, supply the three
-values as environment variables from whatever secret store you already use.
+If a plaintext file is not acceptable, use a `credentialCommand` rather than asking the user to
+paste credentials anywhere.
 
 ## Maintaining this skill
 

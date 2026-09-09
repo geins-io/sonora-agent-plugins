@@ -35,6 +35,43 @@ a second account (`_<PROFILE>` suffix, used with `--profile`) or retarget the ba
 Credentials are never written to the repository, and the skill instructs Claude never to read or
 print those files.
 
+### Keeping credentials out of files entirely
+
+Optional, and recommended once more than one person uses this. Configure a `credentialCommand` and
+the plugin fetches credentials from your vault at call time instead of reading a file:
+
+```json
+// ~/.geins/config.json, or .geins.json in a repository. No secrets in here.
+{
+  "profiles": {
+    "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" },
+    "prod":    { "credentialCommand": "op read op://Private/geins-mgmtapi-prod/credential" }
+  }
+}
+```
+
+The command prints either JSON with `username`, `password` and `apiKey`, or `key=value` lines using
+`GEINS_MGMT_API_USER`, `GEINS_MGMT_API_PWD` and `GEINS_MGMT_API_KEY`. Anything that writes a secret
+to stdout works, with no dependency added to the plugin:
+
+| Store | Command |
+| --- | --- |
+| Azure Key Vault | `az keyvault secret show --vault-name <kv> --name <secret> --query value -o tsv` |
+| 1Password | `op read "op://Private/geins-mgmtapi/credential"` |
+| macOS Keychain | `security find-generic-password -s geins-mgmtapi -a default -w` |
+| Linux libsecret | `secret-tool lookup service geins-mgmtapi account default` |
+| Windows Credential Manager | `powershell.exe -NoProfile -Command "..."`, using the built-in 5.1 |
+
+Resolution order is environment variables, then `credentialCommand`, then the `.env` files, so
+adding a command changes nothing for anyone still using a file. The command runs once per process,
+so a paged read costs one vault call rather than one per request.
+
+Check which source answers without printing any value:
+
+```
+node scripts/get.js --check-credentials [--profile <name>]
+```
+
 ## Requirements
 
 Node 18 or later on the PATH, for global `fetch`. The scripts have no dependencies, so there is no
