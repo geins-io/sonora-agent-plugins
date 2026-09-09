@@ -111,6 +111,10 @@ The command prints either JSON with `username`, `password` and `apiKey`, or `key
 using the three variable names. It runs once per process, so a paged read does not re-prompt a
 keychain per request.
 
+Each profile is a key under `profiles` with its own command, and sources can be mixed: a profile
+with no command falls back to the `.env` files under its `_<PROFILE>` suffixed keys. So one account
+can come from a vault while another stays in a file.
+
 Config files are safe to read and show the user. The command string is not a secret; its output
 is, so never echo that.
 

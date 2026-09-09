@@ -59,6 +59,10 @@ file and CI are in
 [the plugin's README](plugins/geins/README.md#keeping-credentials-out-of-files-entirely), including
 how to store the secret in each.
 
+More than one account is a second key under `profiles`, selected with `--profile <name>`. Each
+profile resolves independently, so production can sit behind a vault while a scratch account stays
+in a file. See [Profiles](plugins/geins/README.md#profiles).
+
 Verify whichever you chose, without printing anything:
 
 ```

@@ -165,6 +165,48 @@ Set `GEINS_MGMT_API_USER`, `GEINS_MGMT_API_PWD` and `GEINS_MGMT_API_KEY` as envi
 from your runner's secret store. They outrank both the command and the files, so CI needs no
 config at all.
 
+### Profiles
+
+Every source is per profile, so accounts can come from different places. A profile is a key under
+`profiles`, and `--profile <name>` selects it:
+
+```jsonc
+{
+  "profiles": {
+    "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" },
+    "prod":    { "credentialCommand": "op read op://Private/geins-mgmtapi-prod/credential" }
+  }
+}
+```
+
+```
+node scripts/get.js --path "Market/List"                    # default
+node scripts/get.js --path "Market/List" --profile prod     # prod
+```
+
+Sources can be mixed. A profile with no `credentialCommand` falls back to the `.env` files on its
+own, so `default` can come from a vault while a scratch account stays in a file under its
+suffixed keys:
+
+```
+GEINS_MGMT_API_USER_LABS=...
+GEINS_MGMT_API_PWD_LABS=...
+GEINS_MGMT_API_KEY_LABS=...
+```
+
+The suffix is the profile name uppercased, with anything outside `A-Z0-9` replaced by `_`. The
+`default` profile takes no suffix.
+
+To override one profile's command for a single run, set
+`GEINS_MGMT_API_CREDENTIAL_COMMAND_<PROFILE>`. It beats the config file and affects only that
+profile.
+
+Each profile resolves once per process, so a paged read against `prod` costs one vault call and
+never touches the credentials of another profile.
+
+Keeping production behind its own profile name is the point: a write against it has to say
+`--profile prod` on the command line, where you and any permission prompt can see it.
+
 ### Checking it works
 
 Names the resolving source and proves all three values arrive, printing no value:
