@@ -1,7 +1,7 @@
 ---
 name: mgmtapi
 description: Call the Geins Management API (mgmtapi.geins.io/API) to read or write products, orders, users, campaigns, prices, webhooks and more. Use whenever a task means talking to a live Geins account rather than changing local code.
-allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/get.js *)
+allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/get.js *), Bash(node ${CLAUDE_SKILL_DIR}/scripts/profile.js *)
 ---
 
 # Geins Management API
@@ -73,6 +73,30 @@ return a bare array instead.
 - **Language codes are per account.** Norwegian is usually `nb`, not `no`. Read an existing
   translated record before writing a new locale.
 
+## Profiles
+
+A profile is one Geins account. Which one a call uses is decided once, in this order:
+
+1. `--profile <name>` on the command line
+2. `GEINS_MGMT_API_PROFILE` in the environment
+3. the profile selected for this session
+4. the single configured profile, when only one is configured
+
+With two or more configured and none selected, every call **fails** with the list rather than
+quietly using `default`. That is deliberate: production is a profile too.
+
+```
+node ${CLAUDE_SKILL_DIR}/scripts/profile.js --list        # names, labels, where each resolves from
+node ${CLAUDE_SKILL_DIR}/scripts/profile.js --use prod    # record the choice for this session
+node ${CLAUDE_SKILL_DIR}/scripts/profile.js --current     # what is active, and why
+```
+
+When you have to choose one, ask the user with `AskUserQuestion` and use each profile's label as the
+option description. Never guess, and never pick production to get past an error.
+
+The selection is per session, in `~/.geins/sessions/<session id>.json`, and holds a name only. A
+profile listed as `no credentials` is configured but will fail until its credentials exist.
+
 ## Credentials
 
 Three values from an API User in Geins Merchant Center, read in this order:
@@ -81,8 +105,7 @@ Three values from an API User in Geins Merchant Center, read in this order:
 2. a `credentialCommand` configured for the profile, if there is one
 3. `.env.geins` in the repository you are working in, then `~/.geins/.env`
 
-A second account is the same three keys suffixed with `_<PROFILE>`, reached with
-`--profile <profile>`.
+A second account is the same three keys suffixed with `_<PROFILE>`.
 
 Never read, print or echo the env files, and never include their values in output. The scripts
 resolve them; nothing else needs to.
@@ -102,10 +125,16 @@ instead of reading them from a file, so nothing sensitive sits on disk. Config l
 ```json
 {
   "profiles": {
-    "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" }
+    "default": {
+      "label": "Labs",
+      "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv"
+    }
   }
 }
 ```
+
+`label` and `description` are optional and exist to make the picker readable. Only
+`credentialCommand` affects resolution.
 
 The command prints either JSON with `username`, `password` and `apiKey`, or `key=value` lines
 using the three variable names. It runs once per process, so a paged read does not re-prompt a

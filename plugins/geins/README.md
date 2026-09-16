@@ -9,14 +9,54 @@ repository.
 with the skill, with the API's 162 endpoints across 21 resources documented locally so it picks the
 right route without probing.
 
+`/geins:profile` — pick which Geins account the session works with. With more than one configured,
+you are asked at the start of a session rather than left to remember a flag.
+
 Reads run without a permission prompt. Writes always prompt, and the skill requires a count and a
 preview before any bulk change.
 
+## Using it
+
+Nothing to invoke: ask for what you want, and the skill loads when the request means talking to
+your account rather than changing local code.
+
 ```
-How many orders were created in the last 30 days, by status?
-Which products have no price in the SEK price list?
-Set Custom1 sort orders on all products, scarcest stock first.
+> How many orders were created in the last 30 days, by status?
+> Which products have no price in the SEK price list?
+> Show me order 100234 with its rows and shipping address.
+> What stock do we have on the Bestseller brand, by size?
+> Which customers ordered more than five times this year?
 ```
+
+Writes take the same route but stop for you first. Ask for the change, and Claude reads the
+affected set, reports the count, shows one example request and waits:
+
+```
+> Set Custom1 sort orders on all products, scarcest stock first.
+> Move every product in the Sale category to the Clearance category.
+> Delete the test products whose SKU starts with ZZZ-.
+```
+
+Nothing is sent until you agree to the number it shows you. Every write names the account first:
+
+```
+PUT Product/1234  (profile prod — Production, from session selection)
+```
+
+Two phrasings worth knowing. To stay read-only while you think:
+
+```
+> Don't change anything yet — how many products would that touch?
+```
+
+And to confirm a bulk write actually landed, because the batch endpoints report success either way:
+
+```
+> Read those back and compare against what you sent.
+```
+
+If more than one account is configured, Claude asks which to use at the start of the session; see
+[Profiles](#profiles). With one account it never asks.
 
 ## Setup
 
@@ -30,7 +70,8 @@ GEINS_MGMT_API_KEY=
 
 A `.env.geins` in the repository you are working in is read first if present, and real environment
 variables win over both, so CI needs no file. Copy `.env.geins.example` for the extra keys that add
-a second account (`_<PROFILE>` suffix, used with `--profile`) or retarget the base URL.
+a second account (`_<PROFILE>` suffix) or retarget the base URL. With one account configured there
+is nothing more to do — profiles only start asking anything of you once there are two.
 
 Credentials are never written to the repository, and the skill instructs Claude never to read or
 print those files.
@@ -168,24 +209,91 @@ config at all.
 ### Profiles
 
 Every source is per profile, so accounts can come from different places. A profile is a key under
-`profiles`, and `--profile <name>` selects it:
+`profiles`, and `label` and `description` are optional text that make it recognisable when you are
+asked to pick one:
 
 ```jsonc
 {
   "profiles": {
-    "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" },
-    "prod":    { "credentialCommand": "op read op://Private/geins-mgmtapi-prod/credential" }
+    "labs": {
+      "label": "Labs",
+      "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv"
+    },
+    "prod": {
+      "label": "Production",
+      "description": "Live store — writes are real",
+      "credentialCommand": "op read op://Private/geins-mgmtapi-prod/credential"
+    }
   }
 }
 ```
 
+#### Listing them
+
 ```
-node scripts/get.js --path "Market/List"                    # default
-node scripts/get.js --path "Market/List" --profile prod     # prod
+node scripts/profile.js --list
 ```
 
+```
+  labs  Labs        credentialCommand
+  prod  Production  credentialCommand <- selected for this session
+```
+
+`--list --verify` additionally runs each `credentialCommand` to prove it resolves. Plain `--list`
+runs nothing, so it never sets off a vault prompt per profile.
+
+#### Choosing one for a session
+
+`/geins:profile` lists the profiles, asks which to use, and remembers the answer for the rest of the
+session. With more than one profile configured, a SessionStart hook raises the question before any
+call is made, so a session starts by naming the account it is about to touch.
+
+```
+/geins:profile          # list and choose
+/geins:profile prod     # switch straight to prod
+```
+
+Under the hood that is:
+
+```
+node scripts/profile.js --use prod      # record the choice
+node scripts/profile.js --current       # what is active, and why
+node scripts/profile.js --clear         # forget it
+```
+
+The choice lives in `~/.geins/sessions/<session id>.json` and holds a profile name, nothing else.
+Two sessions can therefore work against two accounts at once without interfering, and the file is
+swept after seven days. Outside Claude Code there is no session, so use `--profile` or
+`GEINS_MGMT_API_PROFILE` there.
+
+Set `"profilePrompt"` to `"first-use"` to be asked lazily at the first API call instead of at session
+start, or `"never"` to be left alone:
+
+```jsonc
+{ "profilePrompt": "first-use", "profiles": { } }
+```
+
+#### Which profile a call uses
+
+1. `--profile <name>` on the command line
+2. `GEINS_MGMT_API_PROFILE` in the environment
+3. the profile selected for this session
+4. the single configured profile, when only one is configured
+
+**With two or more configured and none selected, the call fails** and lists them, rather than
+quietly falling back to `default`:
+
+```
+2 profiles are configured and none is selected for this session:
+  labs  Labs        credentialCommand
+  prod  Production  credentialCommand
+Choose one with /geins:profile, or pass --profile <name>.
+```
+
+A single-profile setup never sees any of this: no hook question, no error, no new flag.
+
 Sources can be mixed. A profile with no `credentialCommand` falls back to the `.env` files on its
-own, so `default` can come from a vault while a scratch account stays in a file under its
+own, so `labs` can come from a vault while a scratch account stays in a file under its
 suffixed keys:
 
 ```
@@ -204,8 +312,15 @@ profile.
 Each profile resolves once per process, so a paged read against `prod` costs one vault call and
 never touches the credentials of another profile.
 
-Keeping production behind its own profile name is the point: a write against it has to say
-`--profile prod` on the command line, where you and any permission prompt can see it.
+Keeping production behind its own profile name is the point. A write always names the account it is
+about to hit, and where that choice came from, before it sends anything:
+
+```
+$ node scripts/send.js --method PUT --path "Product/1234" --body-file ./product.json
+PUT Product/1234  (profile prod — Production, from session selection)
+{ ... }
+Not sent. Re-run with --confirm to send this request.
+```
 
 ### Checking it works
 
@@ -228,23 +343,27 @@ install step.
 ## Layout
 
 ```
+commands/profile.md        /geins:profile, the session profile picker
+hooks/hooks.json           SessionStart, raises the profile question
 skills/mgmtapi/
 ├── SKILL.md
 ├── references/        generated endpoint and schema reference, one file per resource
 └── scripts/
-    ├── geins-api.js       transport: credentials, auth, retries, paging, batching
+    ├── geins-api.js       transport: credentials, profiles, auth, retries, paging, batching
     ├── get.js             reads
     ├── send.js            writes, --confirm required
+    ├── profile.js         lists profiles, records the session's choice
     └── sync-api-spec.js   maintainer tool, regenerates references/
 ```
 
 ## Command line
 
 ```
-node scripts/get.js  --path <route> [--query k=v]... [--profile <name>]
-node scripts/get.js  --resource <name> [--all] [--filter <json>] [--max-pages <n>]
-node scripts/send.js --method POST|PUT|PATCH|DELETE --path <route>
-                     [--body <json> | --body-file <path>] [--query k=v]... --confirm
+node scripts/get.js     --path <route> [--query k=v]... [--profile <name>]
+node scripts/get.js     --resource <name> [--all] [--filter <json>] [--max-pages <n>]
+node scripts/send.js    --method POST|PUT|PATCH|DELETE --path <route>
+                        [--body <json> | --body-file <path>] [--query k=v]... --confirm
+node scripts/profile.js --list [--verify] | --use <name> | --current | --clear
 ```
 
 `get.js` cannot mutate: it issues `GET`, or the `Query` endpoints that read via `POST`. `send.js`

@@ -14,13 +14,13 @@
  */
 
 const fs = require('fs');
-const { request, parseQueryPairs, parseArguments, fail } = require('./geins-api');
+const { request, parseQueryPairs, parseArguments, effectiveProfile, profileLabel, fail } = require('./geins-api');
 
 const METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
 async function main() {
   const options = parseArguments(process.argv.slice(2), ['confirm']);
-  const profile = options.profile || 'default';
+  const { profile, origin } = effectiveProfile(options.profile);
 
   if (!options.method || !options.path) {
     throw new Error('Both --method and --path are required.');
@@ -37,7 +37,12 @@ async function main() {
 
   const payload = options['body-file'] ? fs.readFileSync(options['body-file'], 'utf8') : options.body;
 
-  process.stdout.write(`${method} ${options.path}${options.profile ? ` (profile ${profile})` : ''}\n`);
+  // Always name the account, never only when --profile was typed: once the profile can come from
+  // session state, this line is the last place it is visible before the write lands.
+  const label = profileLabel(profile);
+  process.stdout.write(
+    `${method} ${options.path}  (profile ${profile}${label ? ` — ${label}` : ''}, from ${origin})\n`
+  );
   if (payload) {
     process.stdout.write(`${payload}\n`);
   }

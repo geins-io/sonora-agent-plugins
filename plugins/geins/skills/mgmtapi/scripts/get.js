@@ -12,15 +12,27 @@
  *   node get.js --resource Product --all [--filter '{...}'] [--max-pages 100]
  *   node get.js --check-credentials [--profile <name>]
  *
+ * Without --profile the profile comes from GEINS_MGMT_API_PROFILE, then the session selection made
+ * through profile.js, then the single configured profile. See effectiveProfile in geins-api.js.
+ *
  * --all walks POST {Resource}/Query/{page}, which only Order, Product and User expose. Page size
  * is 1000 and --max-pages defaults to 100, so a run warns rather than truncating in silence.
  */
 
-const { request, queryAll, parseQueryPairs, parseArguments, credentials, credentialSource, fail } = require('./geins-api');
+const {
+  request,
+  queryAll,
+  parseQueryPairs,
+  parseArguments,
+  credentials,
+  credentialSource,
+  effectiveProfile,
+  fail,
+} = require('./geins-api');
 
 async function main() {
   const options = parseArguments(process.argv.slice(2), ['all', 'check-credentials']);
-  const profile = options.profile || 'default';
+  const { profile } = effectiveProfile(options.profile);
 
   if (options['check-credentials']) {
     const { source, detail } = credentialSource(profile);
