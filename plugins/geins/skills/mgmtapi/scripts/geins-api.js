@@ -16,9 +16,12 @@ const { execSync } = require('child_process');
 const DEFAULT_BASE_URL = 'https://mgmtapi.geins.io/API';
 const MAX_ATTEMPTS = 4;
 const CREDENTIAL_COMMAND_TIMEOUT_MS = 60000;
+const SESSION_STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const PROFILE_PROMPTS = ['session', 'first-use', 'never'];
 
 let envFileValues = null;
 let configValues = null;
+let configTopLevel = null;
 const credentialCache = new Map();
 
 /**
@@ -122,12 +125,13 @@ function configFilePaths() {
   return paths;
 }
 
-function config() {
+function loadConfig() {
   if (configValues !== null) {
-    return configValues;
+    return;
   }
 
   configValues = {};
+  configTopLevel = {};
 
   for (const file of configFilePaths()) {
     if (!fs.existsSync(file)) {
@@ -146,9 +150,41 @@ function config() {
         configValues[profile] = entry;
       }
     }
-  }
 
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key !== 'profiles' && !(key in configTopLevel)) {
+        configTopLevel[key] = value;
+      }
+    }
+  }
+}
+
+function config() {
+  loadConfig();
   return configValues;
+}
+
+/** Top-level config keys, the ones that are not a profile. Same first-file-wins merge. */
+function configSetting(name) {
+  loadConfig();
+  return configTopLevel[name];
+}
+
+function profileEntry(profile) {
+  const entry = config()[profile];
+  return entry && typeof entry === 'object' ? entry : {};
+}
+
+function profileLabel(profile) {
+  const { label } = profileEntry(profile);
+  return label && String(label).trim() !== '' ? String(label).trim() : null;
+}
+
+/** When to make the user choose: at session start, lazily at the first call, or never. */
+function profilePrompt() {
+  const configured = process.env.GEINS_MGMT_API_PROFILE_PROMPT || configSetting('profilePrompt');
+  const value = configured ? String(configured).trim().toLowerCase() : '';
+  return PROFILE_PROMPTS.includes(value) ? value : 'session';
 }
 
 function credentialCommand(profile) {
@@ -302,12 +338,222 @@ function credentialSource(profile) {
 
   for (const file of envFilePaths()) {
     const values = parseEnvFile(file);
-    if (values[`GEINS_MGMT_API_USER${suffix}`] && values[`GEINS_MGMT_API_KEY${suffix}`]) {
+    if (
+      values[`GEINS_MGMT_API_USER${suffix}`] &&
+      values[`GEINS_MGMT_API_PWD${suffix}`] &&
+      values[`GEINS_MGMT_API_KEY${suffix}`]
+    ) {
       return { source: 'env file', detail: file };
     }
   }
 
   return { source: 'nothing', detail: `searched ${configFilePaths().join(', ')} and ${envFilePaths().join(', ')}` };
+}
+
+/**
+ * A profile is never declared in one place: it is a key under `profiles`, or the existence of
+ * `_<PROFILE>` suffixed keys in an env file or the environment. Collect the names from all of them.
+ *
+ * Names recovered from a suffix are lossy, because `my-prof` and `my_prof` both suffix to
+ * `_MY_PROF`. Reporting the underscore form is safe: it resolves to exactly the same keys.
+ */
+function profileNameFromKey(key) {
+  const match = /^GEINS_MGMT_API_(?:USER|CREDENTIAL_COMMAND)(?:_(.+))?$/.exec(key);
+  if (!match) {
+    return null;
+  }
+
+  return match[1] ? match[1].toLowerCase() : 'default';
+}
+
+/**
+ * Cheap by default: `credentialSource` executes nothing, so listing cannot set off a vault prompt
+ * per profile. Pass `{ verify: true }` to prove each one resolves, which does run the commands.
+ */
+function listProfiles({ verify = false } = {}) {
+  const names = new Set(Object.keys(config()));
+
+  const keySources = [process.env, ...envFilePaths().map(parseEnvFile)];
+  for (const values of keySources) {
+    for (const [key, value] of Object.entries(values)) {
+      if (!value || String(value).trim() === '') {
+        continue;
+      }
+
+      const name = profileNameFromKey(key);
+      if (name) {
+        names.add(name);
+      }
+    }
+  }
+
+  const ordered = [...names].sort((a, b) => {
+    if (a === 'default') return -1;
+    if (b === 'default') return 1;
+    return a.localeCompare(b);
+  });
+
+  return ordered.map((name) => {
+    const entry = profileEntry(name);
+    const { source, detail } = credentialSource(name);
+
+    let resolvable = null;
+    if (verify) {
+      try {
+        credentials(name);
+        resolvable = true;
+      } catch (error) {
+        resolvable = false;
+      }
+    }
+
+    return {
+      name,
+      label: profileLabel(name),
+      description: entry.description || null,
+      source,
+      detail,
+      resolvable,
+    };
+  });
+}
+
+/** Aligned `name  label  source` rows, shared by the listing, the hook and the unselected error. */
+function formatProfileRows(profiles) {
+  if (profiles.length === 0) {
+    return [];
+  }
+
+  const nameWidth = Math.max(...profiles.map((profile) => profile.name.length));
+  const labels = profiles.map((profile) => profile.label || '');
+  const labelWidth = Math.max(...labels.map((label) => label.length));
+
+  return profiles.map((profile, index) => {
+    const state = profile.resolvable === false || profile.source === 'nothing' ? 'no credentials' : profile.source;
+    const label = labelWidth > 0 ? `${labels[index].padEnd(labelWidth)}  ` : '';
+    return `  ${profile.name.padEnd(nameWidth)}  ${label}${state}`;
+  });
+}
+
+/**
+ * Which session is asking. The hook is handed a session_id on stdin; a Bash tool call gets the same
+ * value as CLAUDE_CODE_SESSION_ID. Outside Claude Code there is none, and there is no session state.
+ */
+function sessionId() {
+  const id = process.env.CLAUDE_CODE_SESSION_ID;
+  return id && id.trim() !== '' ? id.trim() : null;
+}
+
+function sessionStateDir() {
+  return path.join(os.homedir(), '.geins', 'sessions');
+}
+
+function sessionStatePath() {
+  const id = sessionId();
+  return id ? path.join(sessionStateDir(), `${id.replace(/[^A-Za-z0-9._-]/g, '_')}.json`) : null;
+}
+
+function readSessionProfile() {
+  const file = sessionStatePath();
+  if (!file || !fs.existsSync(file)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return parsed && parsed.profile ? String(parsed.profile) : null;
+  } catch (error) {
+    // A corrupt state file must not block every call; treat it as no selection.
+    return null;
+  }
+}
+
+/** Holds a profile name and nothing else, so the file is not a secret. */
+function writeSessionProfile(profile) {
+  const file = sessionStatePath();
+  if (!file) {
+    throw new Error(
+      'No CLAUDE_CODE_SESSION_ID in the environment, so there is no session to record a profile ' +
+        'for. Pass --profile <name>, or set GEINS_MGMT_API_PROFILE.'
+    );
+  }
+
+  fs.mkdirSync(sessionStateDir(), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, `${JSON.stringify({ profile }, null, 2)}\n`, { mode: 0o600 });
+  pruneSessionState();
+
+  return file;
+}
+
+function clearSessionProfile() {
+  const file = sessionStatePath();
+  if (!file || !fs.existsSync(file)) {
+    return null;
+  }
+
+  fs.unlinkSync(file);
+  return file;
+}
+
+/** Sessions never announce their end, so old state is swept on write rather than tracked. */
+function pruneSessionState() {
+  let entries;
+  try {
+    entries = fs.readdirSync(sessionStateDir());
+  } catch (error) {
+    return;
+  }
+
+  const cutoff = Date.now() - SESSION_STATE_MAX_AGE_MS;
+  for (const name of entries) {
+    const file = path.join(sessionStateDir(), name);
+    try {
+      if (fs.statSync(file).mtimeMs < cutoff) {
+        fs.unlinkSync(file);
+      }
+    } catch (error) {
+      // Another session may have swept the same file; nothing to do.
+    }
+  }
+}
+
+/**
+ * The single place a profile name is decided. An explicit flag always wins; past that the point is
+ * that more than one configured profile and no selection is an error, not a quiet fall back to
+ * 'default'. A single-profile setup never sees any of this.
+ */
+function effectiveProfile(explicit) {
+  if (explicit && explicit.trim() !== '') {
+    return { profile: explicit.trim(), origin: '--profile' };
+  }
+
+  const fromEnvironment = process.env.GEINS_MGMT_API_PROFILE;
+  if (fromEnvironment && fromEnvironment.trim() !== '') {
+    return { profile: fromEnvironment.trim(), origin: 'GEINS_MGMT_API_PROFILE' };
+  }
+
+  const fromSession = readSessionProfile();
+  if (fromSession) {
+    return { profile: fromSession, origin: 'session selection' };
+  }
+
+  const profiles = listProfiles();
+
+  if (profiles.length === 1) {
+    return { profile: profiles[0].name, origin: 'the only configured profile' };
+  }
+
+  if (profiles.length === 0) {
+    // Nothing is configured at all. Carry on to the existing "No credentials" error, which names
+    // every path searched and is more useful here than a list of zero profiles.
+    return { profile: 'default', origin: 'fallback' };
+  }
+
+  throw new Error(
+    `${profiles.length} profiles are configured and none is selected for this session:\n` +
+      `${formatProfileRows(profiles).join('\n')}\n` +
+      `Choose one with /geins:profile, or pass --profile <name>.`
+  );
 }
 
 function authHeaders(credential) {
@@ -469,4 +715,21 @@ function fail(error) {
   process.exit(1);
 }
 
-module.exports = { request, queryAll, parseQueryPairs, parseArguments, credentials, credentialSource, fail };
+module.exports = {
+  request,
+  queryAll,
+  parseQueryPairs,
+  parseArguments,
+  credentials,
+  credentialSource,
+  listProfiles,
+  formatProfileRows,
+  profileLabel,
+  profilePrompt,
+  effectiveProfile,
+  sessionId,
+  readSessionProfile,
+  writeSessionProfile,
+  clearSessionProfile,
+  fail,
+};
