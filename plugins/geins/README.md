@@ -340,6 +340,11 @@ All three values resolved.
 Node 18 or later on the PATH, for global `fetch`. The scripts have no dependencies, so there is no
 install step.
 
+Check with `node --version`. If it errors or prints a lower number, install it — `winget install
+OpenJS.NodeJS.LTS` on Windows, `brew install node` on macOS, your package manager on Linux, or the
+installer from [nodejs.org](https://nodejs.org). See
+[Prerequisites](../../README.md#prerequisites).
+
 ## Layout
 
 ```

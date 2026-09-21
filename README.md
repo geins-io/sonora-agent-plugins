@@ -3,6 +3,34 @@
 A [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) for working with Geins
 from Claude Code.
 
+## Prerequisites
+
+[Node](https://nodejs.org) 18 or later on the PATH, for global `fetch`. Nothing else: the scripts
+have no dependencies and the endpoint reference ships generated, so there is no install step, YAML
+parser or copy of the API spec needed.
+
+Check what you have:
+
+```
+node --version
+```
+
+If that prints `v18` or higher, skip ahead to [Install](#install). If it errors, or the number is
+lower, install it:
+
+| Platform | |
+| --- | --- |
+| Windows | `winget install OpenJS.NodeJS.LTS`, or the installer from [nodejs.org](https://nodejs.org) |
+| macOS | `brew install node`, or the installer from [nodejs.org](https://nodejs.org) |
+| Linux | your package manager, or [nodesource.com](https://github.com/nodesource/distributions) for a current LTS |
+
+To keep several versions side by side, use [nvm](https://github.com/nvm-sh/nvm) (macOS and Linux)
+or [nvm-windows](https://github.com/coreybutler/nvm-windows) and then `nvm install --lts`.
+
+Open a new terminal afterwards so the PATH change is picked up, and run `node --version` again to
+confirm. Claude Code reads the PATH of the shell it was started from, so restart it too if it was
+already running.
+
 ## Install
 
 ```
@@ -166,11 +194,6 @@ Useful when you want no ambiguity about the account or the shape of the answer:
 | --- | --- | --- |
 | `geins` | `/geins:mgmtapi` | Reads and writes the Geins Management API, with the full endpoint reference bundled |
 | `geins` | `/geins:profile` | Lists the configured accounts and picks the one this session works with |
-
-## Requirements
-
-Node 18 or later on the PATH. Nothing else: the scripts have no dependencies and the endpoint
-reference ships generated, so no install step, YAML parser or copy of the API spec is needed.
 
 ## Development
 
