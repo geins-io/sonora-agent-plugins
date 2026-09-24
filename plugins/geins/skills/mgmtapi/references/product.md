@@ -1,6 +1,6 @@
 # Product
 
-Generated on 2026-09-08 from the Geins Management API spec. Do not edit; regenerate with `node scripts/geins/sync-api-spec.js`.
+Generated on 2026-09-24 from the Geins Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
 Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
 
@@ -46,7 +46,7 @@ Creates a new product.
 
 | Parameter | In | Type | Required | Description |
 |---|---|---|---|---|
-| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice |
+| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice, Meta |
 
 Body: `Product.Models.Write.Product`
 
@@ -71,7 +71,7 @@ Gets a specific product. Make sure to include relevant child-collections in the 
 |---|---|---|---|---|
 | productId | path | string | yes | The id of the product to get. |
 | productIdType | query | enum(0, 1, 2, 3) |  | The type of product id supplied. 0 = Internal. Internal product id set by Geins. Eg: 10001. 1 = ArticleNumber. Article number set by customer. Eg: ABC123. 2 = MarketPrefixedInternal. Internal product id set by Geins, prefixed with market. Eg: SE10001. 3 = MarketPrefixedArticleNumber. Article number set by customer, prefixed with market. Eg: SEABC123. |
-| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice |
+| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice, Meta |
 
 Returns: `Envelope-Product.Models.Read.Product`
 
@@ -83,7 +83,7 @@ Updates a product.
 |---|---|---|---|---|
 | productId | path | string | yes | The id of the product to update. |
 | productIdType | query | enum(0, 1, 2, 3) |  | The type of product id supplied. 0 = Internal. Internal product id set by Geins. Eg: 10001. 1 = ArticleNumber. Article number set by customer. Eg: ABC123. 2 = MarketPrefixedInternal. Internal product id set by Geins, prefixed with market. Eg: SE10001. 3 = MarketPrefixedArticleNumber. Article number set by customer, prefixed with market. Eg: SEABC123. |
-| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice |
+| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice, Meta |
 
 Body: `Product.Models.Write.Product`
 
@@ -295,7 +295,7 @@ Returns: `Product.Models.PurchasePriceEnvelope`
 
 | Parameter | In | Type | Required | Description |
 |---|---|---|---|---|
-| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice |
+| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice, Meta |
 
 Body: `Product.Models.ProductQuery`
 
@@ -308,7 +308,7 @@ The batch id is mandatory when fetching any page other than the first page. If n
 | Parameter | In | Type | Required | Description |
 |---|---|---|---|---|
 | page | path | integer (int32) | yes | The page to fetch. To start a new batched query it is mandatory to send in page=1. |
-| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice |
+| include | query | string |  | Set to empty string to only include basic product data or null to not include any product data. Valid options: Names, ShortTexts, LongTexts, TechTexts, Items, Prices, Categories, Parameters, Variants, Markets, Images, Feeds, Urls, ShippingFees, RelatedProducts, DiscountCampaigns, LowestPrice, Meta |
 
 Body: `Product.Models.ProductQuery`
 
@@ -406,11 +406,12 @@ A product.
 | ShortTexts | Shared.Models.LocalizableContent[] |  | Localized short texts for the product. |
 | LongTexts | Shared.Models.LocalizableContent[] |  | Localized long texts for the product. |
 | TechTexts | Shared.Models.LocalizableContent[] |  | Localized tech texts for the product. |
+| Meta | Product.Models.ProductMeta |  |  |
 | BrandId | integer (int32) |  | The brand of the product. |
 | MaxDiscountPercentage | integer (int32) |  | Maximum discount percentage for the product. |
 | SupplierId | integer (int32) |  | The supplier id of the product. |
-| Items | Product.Models.Write.ProductItem[] |  | The items belonging to the product. Only valid for product creation. |
-| CategoryIds | integer (int32)[] |  | The category ids the product belongs to. |
+| Items | Product.Models.Write.ProductItem[] |  | The items belonging to the product. |
+| CategoryIds | integer (int32)[] |  | The category ids the product belongs to. The first category id will be the main category. A product must belong to at least one category to be sellable. |
 | ParameterValues | ProductParameter.Models.Write.ProductParameterValue[] |  | The parameter values associated with the product. Only valid for product creation. |
 | Variants | Variant.Models.Write.Variant[] |  | The variants for this product. |
 | Markets | Market.Models.Market[] |  | The markets for this product. |
@@ -754,6 +755,16 @@ A piece of localized content.
 | LanguageCode | string |  | The 2-letter ISO 639-1 language code for this locale. |
 | Content | string |  | The localized content. |
 
+### Product.Models.ProductMeta
+
+Meta information for a product.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| Descriptions | Shared.Models.LocalizableContent[] |  | The localized meta descriptions of the product. |
+| Keywords | Shared.Models.LocalizableContent[] |  | The localized meta keywords of the product. |
+| Titles | Shared.Models.LocalizableContent[] |  | The localized meta titles of the product. |
+
 ### ProductParameter.Models.Write.ProductParameterValue
 
 A parameter value for a product.
@@ -826,6 +837,7 @@ A product.
 | ShortTexts | Shared.Models.LocalizableContent[] |  | Localized short texts for the product. |
 | LongTexts | Shared.Models.LocalizableContent[] |  | Localized long texts for the product. |
 | TechTexts | Shared.Models.LocalizableContent[] |  | Localized tech texts for the product. |
+| Meta | Product.Models.ProductMeta |  |  |
 | Items | Product.Models.Read.ProductItem[] |  | The items belonging to the product. |
 | Prices | PriceList.Models.Read.PriceListPrice[] |  | The current prices of the product. |
 | Categories | Category.Models.Read.Category[] |  | The categories the product belongs to. |

@@ -1,6 +1,6 @@
 # Order
 
-Generated on 2026-09-08 from the Geins Management API spec. Do not edit; regenerate with `node scripts/geins/sync-api-spec.js`.
+Generated on 2026-09-24 from the Geins Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
 Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
 
@@ -14,6 +14,8 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | POST | `Order/{id}/Status/{status}/{transactionId}/{secondaryTransactionId}` | Update order status |
 | POST | `Order/{id}/TransactionData` | Update transaction data |
 | DELETE | `Order/{orderId}/OrderRow/{orderRowId}` | Cancel order row |
+| GET | `Order/ByExternalId/{externalId}/{include}` | Get order (external id) |
+| GET | `Order/ByPublicId/{publicId}/{include}` | Get order (public id) |
 | GET | `Order/Capture/{captureId}` | Get capture |
 | POST | `Order/Capture/SetAsProcessed` | Set capture as processed |
 | GET | `Order/Count/{email}` | Count orders |
@@ -24,7 +26,6 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | POST | `Order/Query/{page}` | Query orders (Paged) |
 | GET | `Order/Statuses` | Get order statuses |
 | POST | `Order/ValidateCreation` | Validate order |
-| GET | `OrderByPublicId/{publicId}/{include}` | Get order (public id) |
 
 ## POST Order
 
@@ -47,6 +48,8 @@ Deletes or deactivates an order.
 Returns: `object`
 
 ## PATCH Order/{id}
+
+Only the properties supplied are updated; omitted properties are left unchanged. An externalId may only be held by one order. Supplying one that is already set on a different order returns 409 Conflict and leaves the order untouched.
 
 | Parameter | In | Type | Required | Description |
 |---|---|---|---|---|
@@ -116,6 +119,34 @@ Cancels an order row. Can only be done on an order that has not been delivered o
 | skipRestock | query | boolean |  | If true will not restock the item that was cancelled. Defaults to false. |
 
 Returns: `BaseEnvelope`
+
+## GET Order/ByExternalId/{externalId}/{include}
+
+Get order by external id, as set by an external system. An external id identifies a single order: the partial update endpoint rejects an id that is already set on another order, and the database enforces it with a unique index. The value must be URL encoded. If it contains a forward slash, use the order query endpoint instead.
+
+| Parameter | In | Type | Required | Description |
+|---|---|---|---|---|
+| externalId | path | string | yes | The external ID of the order to get. |
+| include | path | string | yes | A comma separated string of related collections to include with this result set. Possible values are: paymentdetails shippingdetails refunds |
+| combineProductContainerRows | query | boolean |  | If true, will combine all order rows that are part of a container into a single container row. |
+| groupOrderRows | query | boolean |  | If true, will group order rows in the response. This overrides the users default setting. |
+| includeRowIds | query | boolean |  | Used together with groupOrderRows to include the row IDs in the response. Default is false. |
+
+Returns: `Order.Models.Order`
+
+## GET Order/ByPublicId/{publicId}/{include}
+
+Get order by public id.
+
+| Parameter | In | Type | Required | Description |
+|---|---|---|---|---|
+| publicId | path | string (uuid) | yes | The Public ID of the order to get. |
+| include | path | string | yes | A comma separated string of related collections to include with this result set. Possible values are: paymentdetails shippingdetails refunds |
+| combineProductContainerRows | query | boolean |  | If true, will combine all order rows that are part of a container into a single container row. |
+| groupOrderRows | query | boolean |  | If true, will group order rows in the response. This overrides the users default setting. |
+| includeRowIds | query | boolean |  | Used together with groupOrderRows to include the row IDs in the response. Default is false. |
+
+Returns: `Order.Models.Order`
 
 ## GET Order/Capture/{captureId}
 
@@ -200,20 +231,6 @@ Validates order data for order creation.
 Body: `Order.ValidateOrderCreationRequest`
 
 Returns: `Envelope-API.Order.OrderCreationValidationStatus`
-
-## GET OrderByPublicId/{publicId}/{include}
-
-Get order by public id.
-
-| Parameter | In | Type | Required | Description |
-|---|---|---|---|---|
-| publicId | path | string (uuid) | yes | The Public ID of the order to get. |
-| include | path | string | yes | A comma separated string of related collections to include with this result set. Possible values are: paymentdetails shippingdetails refunds |
-| combineProductContainerRows | query | boolean |  | If true, will combine all order rows that are part of a container into a single container row. |
-| groupOrderRows | query | boolean |  | If true, will group order rows in the response. This overrides the users default setting. |
-| includeRowIds | query | boolean |  | Used together with groupOrderRows to include the row IDs in the response. Default is false. |
-
-Returns: `Order.Models.Order`
 
 ## Schemas
 
@@ -302,6 +319,8 @@ An update operation on an order.
 | ParcelNumber | string |  | Parcel number (tracking number). |
 | ExternalOrderStatus | enum(0, 10, 20, 30, 40) |  | The external order status. 0 = None 10 = New 20 = Processing 30 = Failed 40 = Done |
 | ReturnParcelNumber | string |  | Parcel number (tracking number) for a return shipment. |
+| GoodsLabel | string |  | An optional text usually used to mark the goods. The value may be included on the shipment so it can be printed on packaging, labels, or other markings that follow the goods. |
+| CustomerOrderNumber | string |  | An optional customer-supplied reference number for the order. Use this field to include your own internal order number, PO number, or tracking identifier. The value is not validated or required to be unique. |
 
 ### API.Order.OrderComment
 
@@ -376,6 +395,7 @@ An order query.
 | CustomerId | integer (int32) |  | The id of a customer. |
 | CustomerGroupId | integer (int32) |  | The customer group id (member id) of the customer. |
 | Email | string |  | The email of a customer. |
+| ExternalId | string |  | The external id of an order, as set by an external system. Exact match. |
 | Include | string |  | Comma separated list of child-collections to also include in the query result. Possible values are: paymentdetails shippingdetails refunds |
 | ExternalOrderStatus | integer (int32) |  | This status can be used by an external system to change the status of an order, such as failed or done. Predefined statuses are: 0 = None 10 = New 20 = Processing 30 = Failed 40 = Done |
 | CombineProductContainerRows | boolean |  | If true, will combine all order rows that are part of a container into a single container row. |
@@ -545,6 +565,7 @@ An order row.
 | ProductPackageGroupId | string (uuid) |  | The unique group id for the product package used for this row. This separates purchases of multiple packages with the same id. |
 | Status | string |  | Status of the order row. Possible values are: ready, returned, shipped, cancelled, backorder |
 | ExternalPriceSource | string |  | The external price source for this order row, if applicable. This is used to identify the source of the price, such as a third-party service or internal pricing system. |
+| ConfigurationId | string |  | The id of the committed product configuration behind this row. |
 
 ### Order.Models.OrderRefund
 
