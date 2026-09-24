@@ -1,6 +1,6 @@
 # CustomerGroup
 
-Generated on 2026-09-08 from the Geins Management API spec. Do not edit; regenerate with `node scripts/geins/sync-api-spec.js`.
+Generated on 2026-09-24 from the Geins Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
 Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
 

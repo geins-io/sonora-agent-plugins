@@ -1,6 +1,6 @@
 # Geins Management API endpoint index
 
-Spec version v1.12.5, generated on 2026-09-08. Do not edit; regenerate with `node scripts/geins/sync-api-spec.js`.
+Spec version v1.14.0, generated on 2026-09-24. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
 Open only the file for the resource you need.
 
@@ -11,7 +11,7 @@ Open only the file for the resource you need.
 | Category | 4 |  | [category.md](./category.md) |
 | CustomerGroup | 5 |  | [customergroup.md](./customergroup.md) |
 | Market | 2 |  | [market.md](./market.md) |
-| Order | 19 | yes | [order.md](./order.md) |
+| Order | 20 | yes | [order.md](./order.md) |
 | PageArea | 7 |  | [pagearea.md](./pagearea.md) |
 | Payment | 1 |  | [payment.md](./payment.md) |
 | PriceList | 6 |  | [pricelist.md](./pricelist.md) |
