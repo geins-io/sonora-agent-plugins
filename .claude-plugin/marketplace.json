@@ -1,14 +1,14 @@
 {
-  "name": "geins-plugins",
-  "description": "Claude Code plugins for working with Geins: Management API access, with more to come.",
+  "name": "litium-plugins",
+  "description": "Claude Code plugins for working with Litium: Sonora Management API access, with more to come.",
   "owner": {
-    "name": "Geins"
+    "name": "Litium"
   },
   "plugins": [
     {
-      "name": "geins",
-      "source": "./plugins/geins",
-      "description": "Call the Geins Management API from any repository: read and write products, orders, users, campaigns and prices, with the full endpoint reference bundled."
+      "name": "sonora",
+      "source": "./plugins/sonora",
+      "description": "Call the Sonora Management API from any repository: read and write products, orders, users, campaigns and prices, with the full endpoint reference bundled."
     }
   ]
 }
