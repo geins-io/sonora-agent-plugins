@@ -1,7 +1,7 @@
-# Geins Claude Code plugins
+# Litium Claude Code plugins
 
-A [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) for working with Geins
-from Claude Code.
+A [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) for working with
+Litium Sonora from Claude Code.
 
 ## Prerequisites
 
@@ -34,38 +34,38 @@ already running.
 ## Install
 
 ```
-/plugin marketplace add jmandery/geins-claude-plugins
-/plugin install geins@geins-plugins
+/plugin marketplace add jmandery/litium-claude-plugins
+/plugin install sonora@litium-plugins
 ```
 
-`geins@geins-plugins` is `<plugin>@<marketplace>`, both named in the manifests, so it stays the
+`sonora@litium-plugins` is `<plugin>@<marketplace>`, both named in the manifests, so it stays the
 same wherever the repository is hosted.
 
 If the install summary says `Run /reload-plugins to activate.`, run that.
 
 ## Credentials
 
-Three values from an API User in Geins Merchant Center, supplied one of three ways. First match
+Three values from an API User in Sonora Merchant Center, supplied one of three ways. First match
 wins:
 
 | | Source | Use it for |
 | --- | --- | --- |
-| 1 | `GEINS_MGMT_API_USER`, `GEINS_MGMT_API_PWD`, `GEINS_MGMT_API_KEY` environment variables | CI, and one-off overrides |
+| 1 | `SONORA_MGMT_API_USER`, `SONORA_MGMT_API_PWD`, `SONORA_MGMT_API_KEY` environment variables | CI, and one-off overrides |
 | 2 | a `credentialCommand` that fetches them from a vault | teams, and anywhere a plaintext file is not acceptable |
-| 3 | `.env.geins` in the repository, then `~/.geins/.env` | getting started on one machine |
+| 3 | `.env.sonora` in the repository, then `~/.sonora/.env` | getting started on one machine |
 
 ### The quick way
 
 ```
-mkdir -p ~/.geins
-printf 'GEINS_MGMT_API_USER=\nGEINS_MGMT_API_PWD=\nGEINS_MGMT_API_KEY=\n' > ~/.geins/.env
-chmod 600 ~/.geins/.env
+mkdir -p ~/.sonora
+printf 'SONORA_MGMT_API_USER=\nSONORA_MGMT_API_PWD=\nSONORA_MGMT_API_KEY=\n' > ~/.sonora/.env
+chmod 600 ~/.sonora/.env
 ```
 
 Fill in the three values. That one file serves every repository you open, on every platform, since
-the path comes from the OS home directory. On Windows it is `%USERPROFILE%\.geins\.env` and the
+the path comes from the OS home directory. On Windows it is `%USERPROFILE%\.sonora\.env` and the
 profile's own ACL already restricts it to you. See
-[`plugins/geins/.env.geins.example`](plugins/geins/.env.geins.example) for the extra keys that add
+[`plugins/sonora/.env.sonora.example`](plugins/sonora/.env.sonora.example) for the extra keys that add
 a second account or point at a staging host.
 
 ### The safer way
@@ -74,17 +74,17 @@ A file the plugin can read is a file it can print. Point a profile at your vault
 secret touches disk:
 
 ```jsonc
-// ~/.geins/config.json — where to fetch from, not what to fetch. No secrets in here.
+// ~/.sonora/config.json — where to fetch from, not what to fetch. No secrets in here.
 {
   "profiles": {
-    "default": { "credentialCommand": "az keyvault secret show --vault-name geins-kv --name mgmtapi-labs --query value -o tsv" }
+    "default": { "credentialCommand": "az keyvault secret show --vault-name sonora-kv --name mgmtapi-labs --query value -o tsv" }
   }
 }
 ```
 
 Worked examples for Azure Key Vault, 1Password, macOS Keychain, Linux libsecret, a Windows DPAPI
 file and CI are in
-[the plugin's README](plugins/geins/README.md#keeping-credentials-out-of-files-entirely), including
+[the plugin's README](plugins/sonora/README.md#keeping-credentials-out-of-files-entirely), including
 how to store the secret in each.
 
 ### More than one account
@@ -92,23 +92,23 @@ how to store the secret in each.
 A second key under `profiles` is a second account. Each resolves independently, so production can
 sit behind a vault while a scratch account stays in a file.
 
-Once there are two, `/geins:profile` asks which one the session works with, at the start of the
+Once there are two, `/sonora:profile` asks which one the session works with, at the start of the
 session, and every call after that uses it without a flag:
 
 ```
-/geins:profile          # list them and choose
-/geins:profile prod     # switch straight to prod
+/sonora:profile          # list them and choose
+/sonora:profile prod     # switch straight to prod
 ```
 
 Nothing is assumed on your behalf: with two profiles configured and none chosen, a call fails and
 lists them instead of quietly using `default`. With a single profile configured, none of this
-appears. See [Profiles](plugins/geins/README.md#profiles).
+appears. See [Profiles](plugins/sonora/README.md#profiles).
 
 Verify whichever you chose, without printing anything:
 
 ```
-node plugins/geins/skills/mgmtapi/scripts/get.js --check-credentials
-node plugins/geins/skills/mgmtapi/scripts/profile.js --list --verify
+node plugins/sonora/skills/mgmtapi/scripts/get.js --check-credentials
+node plugins/sonora/skills/mgmtapi/scripts/profile.js --list --verify
 ```
 
 ## Using it
@@ -137,8 +137,8 @@ else happens, and every call for the rest of the session uses it:
 Pick one and carry on. To change account later, or to choose before being asked:
 
 ```
-/geins:profile          # list them and choose
-/geins:profile prod     # switch straight to prod
+/sonora:profile          # list them and choose
+/sonora:profile prod     # switch straight to prod
 ```
 
 With a single account configured, none of this appears — you are never asked anything.
@@ -192,20 +192,20 @@ Useful when you want no ambiguity about the account or the shape of the answer:
 
 | Plugin | Provides | What it does |
 | --- | --- | --- |
-| `geins` | `/geins:mgmtapi` | Reads and writes the Geins Management API, with the full endpoint reference bundled |
-| `geins` | `/geins:profile` | Lists the configured accounts and picks the one this session works with |
+| `sonora` | `/sonora:mgmtapi` | Reads and writes the Sonora Management API, with the full endpoint reference bundled |
+| `sonora` | `/sonora:profile` | Lists the configured accounts and picks the one this session works with |
 
 ## Development
 
 Test without installing:
 
 ```
-claude --plugin-dir ./plugins/geins
+claude --plugin-dir ./plugins/sonora
 ```
 
-Validate before publishing, and bump `version` in `plugins/geins/.claude-plugin/plugin.json` on
+Validate before publishing, and bump `version` in `plugins/sonora/.claude-plugin/plugin.json` on
 every release so installs pick the change up:
 
 ```
-claude plugin validate ./plugins/geins
+claude plugin validate ./plugins/sonora
 ```
