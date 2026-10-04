@@ -1,6 +1,8 @@
 ---
 name: mgmtapi
 description: Call the Sonora Management API (mgmtapi.geins.io/API) to read or write products, orders, users, campaigns, prices, webhooks and more. Use whenever a task means talking to a live Sonora account rather than changing local code.
+license: MIT
+compatibility: Requires Node.js 18+ and network access to mgmtapi.geins.io.
 allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/get.js *), Bash(node ${CLAUDE_SKILL_DIR}/scripts/profile.js *)
 ---
 
@@ -10,8 +12,11 @@ Two entry points, split so reads run unprompted while every write asks. Never ca
 raw `curl`: credentials would land in the command line and the transcript, and paging, batching
 and retries would be hand-rolled per task.
 
-Always invoke through `node`, exactly as written below. That form is what the pre-approved read
-permission matches.
+Always invoke through `node`, exactly as written below. In Claude Code that form is what the
+pre-approved read permission matches.
+
+If `${CLAUDE_SKILL_DIR}` appears literally in this file, it stands for the directory that contains
+this SKILL.md; substitute that absolute path in every command.
 
 ## Reads
 
@@ -37,8 +42,10 @@ payloads into context.
 node ${CLAUDE_SKILL_DIR}/scripts/send.js --method PUT --path "Product/1234" --body-file ./product.json --confirm
 ```
 
-Without `--confirm` the script prints the request and sends nothing. Run it that way first and show
-the user the request. Use `--body-file` for anything beyond a couple of fields. `send.js` refuses
+Without `--confirm` the script prints the request and sends nothing. Run it that way first, show
+the user the request, and add `--confirm` only after they agree. In agents that run shell commands
+without a prompt (Codex, Copilot), the script enforces this: `--confirm` is refused unless the same
+request was dry-run before the user's latest message. A refusal means stop and ask, not retry. Use `--body-file` for anything beyond a couple of fields. `send.js` refuses
 `GET`, so reads cannot arrive through the write path.
 
 Before any bulk write: read the affected set, report the count, and get the user to confirm that
@@ -108,11 +115,13 @@ node ${CLAUDE_SKILL_DIR}/scripts/profile.js --use prod    # record the choice fo
 node ${CLAUDE_SKILL_DIR}/scripts/profile.js --current     # what is active, and why
 ```
 
-When you have to choose one, ask the user with `AskUserQuestion` and use each profile's label as the
-option description. Never guess, and never pick production to get past an error.
+When you have to choose one, ask the user (with `AskUserQuestion` where you have it) and use each
+profile's label as the option description. Never guess, and never pick production to get past an
+error.
 
-The selection is per session, in `~/.sonora/sessions/<session id>.json`, and holds a name only. A
-profile listed as `no credentials` is configured but will fail until its credentials exist.
+The selection is per session, in `~/.sonora/sessions/<session id>.json`, and holds a name only. If
+`--use` reports that it cannot record the selection, pass `--profile <name>` on every call instead.
+A profile listed as `no credentials` is configured but will fail until its credentials exist.
 
 ## Credentials
 

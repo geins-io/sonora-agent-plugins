@@ -1,7 +1,7 @@
 # Litium Claude Code plugins
 
 A [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) for working with
-Litium Sonora from Claude Code.
+Litium Sonora from Claude Code, GitHub Copilot or OpenAI Codex.
 
 ## Prerequisites
 
@@ -42,6 +42,48 @@ already running.
 same wherever the repository is hosted.
 
 If the install summary says `Run /reload-plugins to activate.`, run that.
+
+### Other agents
+
+GitHub Copilot CLI and OpenAI Codex read this same marketplace, so the same repository and plugin
+name install there too:
+
+```
+copilot plugin marketplace add geins-io/sonora-claude-plugins
+copilot plugin install sonora@litium-plugins
+
+codex plugin marketplace add geins-io/sonora-claude-plugins
+codex plugin add sonora@litium-plugins
+```
+
+VS Code's Copilot agent mode picks up plugins installed by the Copilot CLI. Credentials and profiles
+are shared with Claude Code, since they live in `~/.sonora`. What differs:
+
+- **Copilot** gates network access per domain. Approve `mgmtapi.geins.io` when asked, or start with
+  `--allow-url=mgmtapi.geins.io`. It runs the SessionStart hook but does not pass its context to the
+  model, so with several profiles you are asked when the first call fails rather than at session
+  start. The profile picker is `/profile`.
+- **Codex** runs a plugin's hooks only after you trust them in `/hooks`. Trust both of sonora's:
+  SessionStart (`profile.js --hook`) raises the profile question, and UserPromptSubmit
+  (`write-gate.js --hook`) records your replies, so without it every write is refused. Codex
+  remembers the trust per hook in `~/.codex/config.toml` and asks again when an update changes one.
+  The profile picker is `$sonora:profile`. Its sandbox only writes inside the workspace, or nowhere in read-only mode. The
+  plugin keeps session state in `~/.sonora/sessions`: without it a chosen profile is passed as
+  `--profile` on each call, and **writes to the API are refused**. Run in workspace-write mode and
+  add:
+
+  ```toml
+  # ~/.codex/config.toml
+  [sandbox_workspace_write]
+  writable_roots = ["C:\\Users\\<you>\\.sonora\\sessions"]   # or "/home/<you>/.sonora/sessions"
+  ```
+
+  On Windows, the `elevated` sandbox mode (`[windows] sandbox`) runs commands as a separate user
+  that cannot read the plugin's files; use `unelevated`.
+- Neither prompts per shell command the way Claude Code does, so the plugin gates writes itself:
+  the agent has to show you the request and you have to reply before it can send it.
+- Where an agent exposes no session id, the choice of profile is passed as `--profile <name>` on
+  each call instead of being remembered.
 
 ## Credentials
 
@@ -202,6 +244,8 @@ Test without installing:
 ```
 claude --plugin-dir ./plugins/sonora
 ```
+
+The same directory loads in the Copilot CLI with `copilot --plugin-dir ./plugins/sonora`.
 
 Validate before publishing, and bump `version` in `plugins/sonora/.claude-plugin/plugin.json` on
 every release so installs pick the change up:

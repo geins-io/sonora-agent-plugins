@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const { request, parseQueryPairs, parseArguments, effectiveProfile, profileLabel, fail } = require('./sonora-api');
+const writeGate = require('./write-gate');
 
 const METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
@@ -47,18 +48,34 @@ async function main() {
     process.stdout.write(`${payload}\n`);
   }
 
-  if (!options.confirm) {
-    process.stdout.write('Not sent. Re-run with --confirm to send this request.\n');
-    return;
-  }
-
-  const result = await request({
+  const requestDetails = {
     method,
     apiPath: options.path,
     query: parseQueryPairs(options.query),
     body: payload,
     profile,
-  });
+  };
+
+  if (!options.confirm) {
+    if (!writeGate.gated()) {
+      process.stdout.write('Not sent. Re-run with --confirm to send this request.\n');
+      return;
+    }
+
+    const problem = writeGate.recordDryRun(requestDetails);
+    process.stdout.write(
+      'Not sent. Show the user this request and wait for their reply. --confirm is refused until ' +
+        'they have answered, and sends only this exact request.\n'
+    );
+    if (problem) {
+      process.stdout.write(`${problem}\n`);
+    }
+    return;
+  }
+
+  writeGate.checkConfirm(requestDetails);
+
+  const result = await request(requestDetails);
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }

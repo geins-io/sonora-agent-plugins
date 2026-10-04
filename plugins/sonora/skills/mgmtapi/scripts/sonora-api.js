@@ -493,21 +493,36 @@ function formatProfileRows(profiles) {
 }
 
 /**
- * Which session is asking. The hook is handed a session_id on stdin; a Bash tool call gets the same
- * value as CLAUDE_CODE_SESSION_ID. Outside Claude Code there is none, and there is no session state.
+ * Environment variables that carry the agent's session id into a shell tool call, per harness. The
+ * SessionStart hook is handed the same id on stdin and copies it into the first of these.
+ * Observed in tool calls: COPILOT_AGENT_SESSION_ID in Copilot CLI 1.0.92, CODEX_SESSION_ID in Codex
+ * 0.160.
  */
+const SESSION_ID_VARIABLES = ['CLAUDE_CODE_SESSION_ID', 'COPILOT_AGENT_SESSION_ID', 'CODEX_SESSION_ID'];
+
+/** Which session is asking. With none of the variables set there is no session state. */
 function sessionId() {
-  const id = process.env.CLAUDE_CODE_SESSION_ID;
-  return id && id.trim() !== '' ? id.trim() : null;
+  for (const name of SESSION_ID_VARIABLES) {
+    const id = process.env[name];
+    if (id && id.trim() !== '') {
+      return id.trim();
+    }
+  }
+  return null;
 }
 
 function sessionStateDir() {
   return path.join(os.homedir(), '.sonora', 'sessions');
 }
 
+/** A file of per-session state, named after the session id with anything path-unsafe replaced. */
+function sessionFilePath(id, suffix = '') {
+  return path.join(sessionStateDir(), `${id.replace(/[^A-Za-z0-9._-]/g, '_')}${suffix}.json`);
+}
+
 function sessionStatePath() {
   const id = sessionId();
-  return id ? path.join(sessionStateDir(), `${id.replace(/[^A-Za-z0-9._-]/g, '_')}.json`) : null;
+  return id ? sessionFilePath(id) : null;
 }
 
 function readSessionProfile() {
@@ -530,13 +545,25 @@ function writeSessionProfile(profile) {
   const file = sessionStatePath();
   if (!file) {
     throw new Error(
-      'No CLAUDE_CODE_SESSION_ID in the environment, so there is no session to record a profile ' +
-        'for. Pass --profile <name>, or set SONORA_MGMT_API_PROFILE.'
+      'This agent exposes no session id, so a selection cannot be remembered for the session. ' +
+        `Pass --profile ${profile} on every call instead, or set SONORA_MGMT_API_PROFILE.`
     );
   }
 
-  fs.mkdirSync(sessionStateDir(), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, `${JSON.stringify({ profile }, null, 2)}\n`, { mode: 0o600 });
+  try {
+    fs.mkdirSync(sessionStateDir(), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, `${JSON.stringify({ profile }, null, 2)}\n`, { mode: 0o600 });
+  } catch (error) {
+    if (!['EPERM', 'EACCES', 'EROFS'].includes(error.code)) {
+      throw error;
+    }
+    // Codex's sandbox, for one, only allows writes inside the workspace.
+    throw new Error(
+      `Cannot record the selection: writing ${sessionStateDir()} is not permitted here (${error.code}), ` +
+        `probably by the agent's sandbox. Pass --profile ${profile} on every call instead, or allow ` +
+        'writes to that directory.'
+    );
+  }
   pruneSessionState();
 
   return file;
@@ -609,7 +636,11 @@ function effectiveProfile(explicit) {
   throw new Error(
     `${profiles.length} profiles are configured and none is selected for this session:\n` +
       `${formatProfileRows(profiles).join('\n')}\n` +
-      `Choose one with /sonora:profile, or pass --profile <name>.`
+      `Ask the user which one to work with, never guess, then ` +
+      (sessionId()
+        ? `record it with\n  node "${path.join(__dirname, 'profile.js')}" --use <name>\n` +
+          `or pass --profile <name> on every call.`
+        : `pass --profile <name> on every call; this agent has no session to record it in.`)
   );
 }
 
@@ -785,6 +816,8 @@ module.exports = {
   profilePrompt,
   effectiveProfile,
   sessionId,
+  sessionStateDir,
+  sessionFilePath,
   readSessionProfile,
   writeSessionProfile,
   clearSessionProfile,

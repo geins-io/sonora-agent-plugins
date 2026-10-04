@@ -284,7 +284,8 @@ node scripts/profile.js --clear         # forget it
 
 The choice lives in `~/.sonora/sessions/<session id>.json` and holds a profile name, nothing else.
 Two sessions can therefore work against two accounts at once without interfering, and the file is
-swept after seven days. Outside Claude Code there is no session, so use `--profile` or
+swept after seven days. The session id comes from Claude Code or the Copilot CLI; in an agent that
+exposes none, or in a plain terminal, there is no session, so use `--profile` or
 `SONORA_MGMT_API_PROFILE` there.
 
 Set `"profilePrompt"` to `"first-use"` to be asked lazily at the first API call instead of at session
@@ -369,8 +370,8 @@ installer from [nodejs.org](https://nodejs.org). See
 ## Layout
 
 ```
-commands/profile.md        /sonora:profile, the session profile picker
-hooks/hooks.json           SessionStart, raises the profile question
+hooks/hooks.json           SessionStart raises the profile question; UserPromptSubmit feeds the write gate
+skills/profile/SKILL.md    /sonora:profile, the session profile picker
 skills/mgmtapi/
 ├── SKILL.md
 ├── references/        generated endpoint and schema reference, one file per resource
@@ -380,6 +381,7 @@ skills/mgmtapi/
     ├── get.js             reads
     ├── send.js            writes, --confirm required
     ├── profile.js         lists profiles, records the session's choice
+    ├── write-gate.js      Codex and Copilot only: --confirm needs a dry run and a user reply since
     └── sync-api-spec.js   maintainer tool, regenerates references/
 ```
 
@@ -395,6 +397,12 @@ node scripts/profile.js --list [--verify] | --use <name> | --current | --clear
 
 `get.js` cannot mutate: it issues `GET`, or the `Query` endpoints that read via `POST`. `send.js`
 prints the request and sends nothing without `--confirm`, and refuses `GET` outright.
+
+Claude Code asks before every `send.js` call, because the skill pre-approves reads only. Codex and
+the Copilot CLI may run it unasked, so there `send.js` also refuses `--confirm` unless the same
+request was dry-run before the user's latest message. A `UserPromptSubmit` hook records those
+messages in `~/.sonora/sessions/<session id>.writes.json`, which is why Codex needs that directory
+writable. The gate stops an eager model from writing in one step; it is not a security boundary.
 
 ## Updating the reference
 
