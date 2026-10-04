@@ -34,7 +34,7 @@ already running.
 ## Install
 
 ```
-/plugin marketplace add jmandery/litium-claude-plugins
+/plugin marketplace add geins-io/sonora-claude-plugins
 /plugin install sonora@litium-plugins
 ```
 
