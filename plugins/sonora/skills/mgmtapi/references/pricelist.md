@@ -1,8 +1,8 @@
 # PriceList
 
-Generated on 2026-09-25 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
+Generated on 2026-10-04 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
-Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
+Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.
 
 | Method | Path | Summary |
 |---|---|---|
@@ -12,6 +12,17 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | PUT | `PriceList/{id}` | Update a price list |
 | GET | `PriceList/List` | List price lists |
 | PUT | `PriceList/Price` |  |
+
+## Pitfalls
+
+Behaviour the spec does not state. Read before writing to this resource. Items marked *(unverified)* were reported from another client and have not been reproduced against a live account; trust them less, and read back to check.
+
+- **Selling prices live here, not on the product.** A product's `PurchasePrice` is its cost; what a
+  customer pays comes from the price list for their market and currency. Read a product's prices with
+  `include=Prices` on the product. *(unverified)*
+- **`PUT PriceList/Price` is a bulk upsert whose 200 proves nothing.** Check `UpdateCount`, `Invalid`
+  and `NotFound` in the response, and read the prices back. *(unverified)*
+- **`ProductId` in a price write is a string**, unlike everywhere else. *(unverified)*
 
 ## POST PriceList
 

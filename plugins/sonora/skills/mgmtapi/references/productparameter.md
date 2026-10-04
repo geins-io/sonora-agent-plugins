@@ -1,8 +1,8 @@
 # ProductParameter
 
-Generated on 2026-09-25 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
+Generated on 2026-10-04 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
-Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
+Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.
 
 | Method | Path | Summary |
 |---|---|---|
@@ -19,6 +19,14 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | GET | `ProductParameter/Value/{id}` | Get product parameter value (Obsolete) |
 | POST | `ProductParameter/Values` | Replace product parameter values (batch) (Obsolete) |
 | PUT | `ProductParameter/Values` | Update product parameter values (batch) (Obsolete) |
+
+## Pitfalls
+
+Behaviour the spec does not state. Read before writing to this resource. Items marked *(unverified)* were reported from another client and have not been reproduced against a live account; trust them less, and read back to check.
+
+- **Float parameters need a period decimal.** Values exported with a comma (`4,0`, common in Swedish
+  data) do not parse as Float: convert them, or store them under a String parameter. *(unverified)*
+- **Parameter values are sent as strings**, whatever the parameter's type. *(unverified)*
 
 ## POST ProductParameter
 

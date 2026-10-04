@@ -58,9 +58,13 @@ first attempt can be correct without a trial call.
 `product.md` and `variant.md` are large. Grep them for the route you want rather than reading them
 whole.
 
+Resources marked "pitfalls" in the index open with a Pitfalls section: behaviour the spec does not
+state, such as defaults that silently change the outcome. Read it before any write to that resource.
+
 Check the `Returns` line before parsing a response. Most endpoints wrap the payload in an envelope
 under `Resource` alongside `Message` and `Details`; an unpaged `Query` and several `List` routes
-return a bare array instead.
+return a bare array instead. Zero rows when the data plainly exists usually means `.Resource` was read
+off a bare array.
 
 ## Things the spec does not say
 
@@ -71,7 +75,17 @@ return a bare array instead.
   `Stock` (physical) and `StockSellable` (after reservations) deliberately, because they diverge on
   oversold products. Sellable can be negative.
 - **Language codes are per account.** Norwegian is usually `nb`, not `no`. Read an existing
-  translated record before writing a new locale.
+  translated record before writing a new locale, and when creating anything with names or texts,
+  supply every language the account uses; a single-language record shows blank in the other locales.
+- **A 2xx does not mean every field took effect.** Some fields are silently ignored (`VatId` and
+  `MainCategoryId` on a product) and some defaults are surprising (a new category is inactive, a new
+  campaign applies to sale items only). Read back anything whose outcome matters.
+- **`PUT` means different things per resource.** `Product/{id}` merges: omitted fields stay, and
+  localized lists merge by language. `Campaign/{id}` and `Brand/{id}` replace the whole record, so read
+  it, change what you need, and send it all back.
+- **A 500 `A database error occured.` usually means a bad body, not an outage.** The scripts retry
+  5xx, so it takes about 15 seconds to surface. Check the body against the resource's Pitfalls
+  rather than retrying again.
 
 ## Profiles
 

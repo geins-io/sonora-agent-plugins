@@ -1,8 +1,8 @@
 # Category
 
-Generated on 2026-09-25 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
+Generated on 2026-10-04 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
-Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
+Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.
 
 | Method | Path | Summary |
 |---|---|---|
@@ -10,6 +10,14 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | GET | `Category/{id}` | Get category |
 | PUT | `Category/{id}` | Update category |
 | POST | `Category/Query` | Query categories |
+
+## Pitfalls
+
+Behaviour the spec does not state. Read before writing to this resource. Items marked *(unverified)* were reported from another client and have not been reproduced against a live account; trust them less, and read back to check.
+
+- **A new category is inactive unless the body says `"Active": true`.** The create succeeds, but
+  products assigned to an inactive category do not show under it. There is no `DELETE` for
+  categories, so a mistaken create stays: get the body right first.
 
 ## POST Category
 

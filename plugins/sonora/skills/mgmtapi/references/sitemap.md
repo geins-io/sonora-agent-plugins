@@ -1,8 +1,8 @@
 # Sitemap
 
-Generated on 2026-09-25 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
+Generated on 2026-10-04 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
-Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
+Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.
 
 | Method | Path | Summary |
 |---|---|---|
