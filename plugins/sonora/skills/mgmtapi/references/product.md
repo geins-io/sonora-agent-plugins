@@ -54,9 +54,10 @@ Behaviour the spec does not state. Read before writing to this resource. Items m
 - **`CategoryIds` replaces the whole set, and its first id is the main category.** `MainCategoryId` in
   a write is silently ignored; reorder `CategoryIds` instead. There is no endpoint that removes a
   single category, so read the current set, drop the id, and write the rest back.
-- **Parent categories are added for you.** Assigning `[10, 2]`, where 2 sits under 1, reads back as
-  `[10, 2, 1]`. So removing a parent while one of its children stays assigned should be a no-op;
-  read back to check. *(unverified)*
+- **Reads list every ancestor of the assigned categories, but only the assigned ones are stored.**
+  Assigning `[10, 2]`, where 2 sits under 1, reads back as `[10, 2, 1]`. Never write the read list
+  back as `CategoryIds`: that turns the inherited ancestors into real assignments. Build `CategoryIds`
+  from the categories you mean to assign.
 - **`include=Parameters`, not `ParameterValues`.** The latter is a 400 `Invalid include`; `Parameters`
   is what fills the `ParameterValues` field. An empty `include=` is a 400 too.
 - **A new product has no items, so it cannot hold stock.** Create an item first, then set stock on
