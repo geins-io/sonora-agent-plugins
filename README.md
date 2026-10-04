@@ -35,7 +35,7 @@ already running.
 ## Install
 
 ```
-/plugin marketplace add geins-io/sonora-claude-plugins
+/plugin marketplace add geins-io/sonora-agent-plugins
 /plugin install sonora@litium-plugins
 ```
 
@@ -50,10 +50,10 @@ GitHub Copilot CLI and OpenAI Codex read this same marketplace, so the same repo
 name install there too:
 
 ```
-copilot plugin marketplace add geins-io/sonora-claude-plugins
+copilot plugin marketplace add geins-io/sonora-agent-plugins
 copilot plugin install sonora@litium-plugins
 
-codex plugin marketplace add geins-io/sonora-claude-plugins
+codex plugin marketplace add geins-io/sonora-agent-plugins
 codex plugin add sonora@litium-plugins
 ```
 

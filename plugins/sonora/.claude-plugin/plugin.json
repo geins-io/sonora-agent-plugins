@@ -5,7 +5,7 @@
   "author": {
     "name": "Litium"
   },
-  "homepage": "https://github.com/geins-io/sonora-claude-plugins",
-  "repository": "https://github.com/geins-io/sonora-claude-plugins",
+  "homepage": "https://github.com/geins-io/sonora-agent-plugins",
+  "repository": "https://github.com/geins-io/sonora-agent-plugins",
   "license": "MIT"
 }
