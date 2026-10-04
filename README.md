@@ -1,4 +1,4 @@
-# Litium Claude Code plugins
+# Sonora Claude Code plugins
 
 A [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) for working with
 Litium Sonora from Claude Code.
@@ -35,13 +35,21 @@ already running.
 
 ```
 /plugin marketplace add geins-io/sonora-claude-plugins
-/plugin install sonora@litium-plugins
+/plugin install sonora@sonora-plugins
 ```
 
-`sonora@litium-plugins` is `<plugin>@<marketplace>`, both named in the manifests, so it stays the
+`sonora@sonora-plugins` is `<plugin>@<marketplace>`, both named in the manifests, so it stays the
 same wherever the repository is hosted.
 
 If the install summary says `Run /reload-plugins to activate.`, run that.
+
+Upgrading from an earlier install? The marketplace used to be called `litium-plugins`, and before
+that `geins-plugins`. Remove whichever you have, which also uninstalls its plugins, then install as
+above:
+
+```
+/plugin marketplace remove litium-plugins
+```
 
 ## Credentials
 

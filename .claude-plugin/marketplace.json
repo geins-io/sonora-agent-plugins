@@ -1,6 +1,6 @@
 {
-  "name": "litium-plugins",
-  "description": "Claude Code plugins for working with Litium: Sonora Management API access, with more to come.",
+  "name": "sonora-plugins",
+  "description": "Claude Code plugins for working with Litium Sonora: Management API access, with more to come.",
   "owner": {
     "name": "Litium"
   },
