@@ -15,7 +15,15 @@
  */
 
 const fs = require('fs');
-const { request, parseQueryPairs, parseArguments, effectiveProfile, profileLabel, fail } = require('./sonora-api');
+const {
+  request,
+  credentials,
+  parseQueryPairs,
+  parseArguments,
+  effectiveProfile,
+  profileLabel,
+  fail,
+} = require('./sonora-api');
 const writeGate = require('./write-gate');
 
 const METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
@@ -75,6 +83,10 @@ async function main() {
     return;
   }
 
+  // Resolve credentials before claiming the approval, so an unknown profile or an expired vault
+  // login does not use it up. They are cached, so request() does not resolve them twice.
+  credentials(profile);
+
   const gated = writeGate.gated();
   writeGate.checkConfirm(requestDetails);
 
@@ -86,8 +98,8 @@ async function main() {
     // send may still have landed, so retrying is the user's call, not the script's.
     if (gated) {
       error.message +=
-        '\nThe approval for this request is used up. Read back to check whether it landed, ' +
-        'then dry-run again and ask the user before retrying.';
+        '\nThe approval for this request is used up. Read back to check whether anything ' +
+        'landed, then dry-run again and ask the user before retrying.';
     }
     throw error;
   }

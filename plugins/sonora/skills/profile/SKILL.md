@@ -4,7 +4,7 @@ description: List the Sonora profiles and choose which account this session work
 license: MIT
 argument-hint: "[profile name]"
 disable-model-invocation: true
-allowed-tools: Bash(node "${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js" *)
+allowed-tools: Bash(node "${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js" *), PowerShell(node "${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js" *)
 ---
 
 # Choose a Sonora profile

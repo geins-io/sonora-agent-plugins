@@ -59,9 +59,9 @@ codex plugin add sonora@litium-plugins
 
 Credentials and profiles are shared across all three, since they live in `~/.sonora`.
 
-Codex runs sandboxed commands without asking, and Copilot does once you allow shell commands, so
-neither has Claude Code's prompt before each write. The plugin gates writes itself there: the agent
-has to show you the request, and you have to reply, before it can send it. See
+Neither can be relied on to ask before a write: Codex runs sandboxed commands without asking, and
+Copilot does once you allow shell commands. So in both the plugin always gates writes itself: the
+agent has to show you the request, and you have to reply, before it can send it. See
 [the write gate](plugins/sonora/README.md#the-write-gate).
 
 **Copilot CLI**

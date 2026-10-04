@@ -494,9 +494,12 @@ function formatProfileRows(profiles) {
 
 /**
  * The variable each agent sets in a shell tool call to carry its session id (Copilot's and Codex's
- * observed in Copilot CLI 1.0.92 and Codex 0.160). A nested agent inherits its parent's variable,
- * so when several are set the first in this order wins. The SessionStart hook is handed the id on
- * stdin and copies it into CLAUDE_CODE_SESSION_ID.
+ * observed in Copilot CLI 1.0.92 and Codex 0.160). The SessionStart hook is handed the id on stdin
+ * and copies it into CLAUDE_CODE_SESSION_ID.
+ *
+ * An agent run inside another inherits the outer one's variable, so several can be set. Profile
+ * selection takes the first in this order; the write gate looks past Claude Code's to the others,
+ * because the inner agent is the one that does not prompt (see write-gate.js).
  */
 const SESSION_ID_VARIABLES = [
   ['claude', 'CLAUDE_CODE_SESSION_ID'],
@@ -504,15 +507,17 @@ const SESSION_ID_VARIABLES = [
   ['codex', 'CODEX_SESSION_ID'],
 ];
 
+/** Every agent session visible in the environment, in the order above. */
+function agentSessions() {
+  return SESSION_ID_VARIABLES.map(([agent, name]) => ({
+    agent,
+    id: (process.env[name] || '').trim(),
+  })).filter((session) => session.id !== '');
+}
+
 /** Which agent and session is asking, or null outside any of them. */
 function agentSession() {
-  for (const [agent, name] of SESSION_ID_VARIABLES) {
-    const id = process.env[name];
-    if (id && id.trim() !== '') {
-      return { agent, id: id.trim() };
-    }
-  }
-  return null;
+  return agentSessions()[0] || null;
 }
 
 /** Which session is asking. Without one there is no session state. */
@@ -826,9 +831,11 @@ module.exports = {
   profilePrompt,
   effectiveProfile,
   agentSession,
+  agentSessions,
   sessionId,
   sessionStateDir,
   sessionFilePath,
+  pruneSessionState,
   readSessionProfile,
   writeSessionProfile,
   clearSessionProfile,

@@ -17,7 +17,7 @@ In Claude Code and the Copilot CLI these are `/sonora:mgmtapi` and `/sonora:prof
 
 Nothing is written until you have seen the request and agreed: Claude Code asks before each write,
 and wherever no such prompt runs, the plugin refuses to send until you have replied (see
-[Command line](#command-line)). Bulk changes also need a count and a preview first.
+[The write gate](#the-write-gate)). Bulk changes also need a count and a preview first.
 
 ## Using it
 
@@ -392,7 +392,7 @@ skills/mgmtapi/
     ├── get.js             reads
     ├── send.js            writes, --confirm required
     ├── profile.js         lists profiles, records the session's choice
-    ├── write-gate.js      where nothing prompts: --confirm needs a dry run and the user's reply
+    ├── write-gate.js      --confirm needs a dry run and a reply, where nothing prompts
     └── sync-api-spec.js   maintainer tool, regenerates references/
 ```
 
@@ -411,26 +411,34 @@ prints the request and sends nothing without `--confirm`, and refuses `GET` outr
 
 ### The write gate
 
-In Claude Code's default mode, the permission prompt before each `send.js` call is what stops a
-write: the skill pre-approves reads only. Nothing prompts in these cases:
+In Claude Code's prompting modes (default, acceptEdits, plan), the permission prompt before each
+`send.js` call is what stops a write: the skill pre-approves reads only. The plugin gates writes
+itself in the other cases:
 
-- Codex, which runs sandboxed commands without asking
-- the Copilot CLI, once you allow shell commands
+- Codex and the Copilot CLI, always, whether or not they also prompt
 - Claude Code in a mode that does not prompt, such as auto or bypassPermissions
 
 There, `send.js --confirm` is refused unless the same request was dry-run before your latest
-message. Each dry run approves one send, and lapses once you have sent another message after the
-one that followed it, so a "no" never turns into a yes later. A bulk change is approved by
-dry-running every item and replying once.
+message. Each dry run approves one send. It can be confirmed only after your next message, and
+lapses at the message after that, so a "no" never turns into a yes later. A bulk change is approved
+by dry-running every item and replying once.
 
 How it knows: `send.js` leaves a file per dry run in `~/.sonora/sessions`, and a `UserPromptSubmit`
 hook records each of your messages there, with Claude Code's permission mode. That is why Codex
 needs the directory writable and the hook trusted. The hook runs `node` on every prompt in every
-session, a few tens of milliseconds, and writes nothing when no Sonora profile is configured.
+session, under a tenth of a second. It writes nothing when Sonora is not set up, and otherwise one
+small file per session, swept after seven days.
 
-Not covered: an "always allow" rule for `send.js` in Claude Code's default mode is invisible to the
-plugin, so such writes are not gated. The gate stops an eager model from writing in one step; it is
-not a security boundary, since anything that can run `send.js` can also write those files.
+Limits:
+
+- Claude Code's permission mode is read when you send a message, so switching to auto mid-turn
+  counts from your next message.
+- An "always allow" rule for `send.js` in a prompting mode is invisible to the plugin, so such
+  writes are not gated.
+- When one agent runs another, Codex and Copilot are gated even inside Claude Code; Claude Code run
+  inside them is gated too.
+- The gate stops an eager model from writing in one step. It is not a security boundary: anything
+  that can run `send.js` can also write those files.
 
 ## Updating the reference
 

@@ -3,7 +3,7 @@ name: mgmtapi
 description: Call the Sonora Management API (mgmtapi.geins.io/API) to read or write products, orders, users, campaigns, prices, webhooks and more. Use whenever a task means talking to a live Sonora account rather than changing local code.
 license: MIT
 compatibility: Requires Node.js 18+ and network access to mgmtapi.geins.io.
-allowed-tools: Bash(node "${CLAUDE_SKILL_DIR}/scripts/get.js" *), Bash(node "${CLAUDE_SKILL_DIR}/scripts/profile.js" *)
+allowed-tools: Bash(node "${CLAUDE_SKILL_DIR}/scripts/get.js" *), Bash(node "${CLAUDE_SKILL_DIR}/scripts/profile.js" *), PowerShell(node "${CLAUDE_SKILL_DIR}/scripts/get.js" *), PowerShell(node "${CLAUDE_SKILL_DIR}/scripts/profile.js" *)
 ---
 
 # Sonora Management API
@@ -56,8 +56,8 @@ arrive through the write path.
 Before any bulk write: read the affected set, report the count, and get the user to confirm that
 number. Never loop the write script over a set you have not counted and shown. Prefer the
 resource's batch endpoint, where one request covers the set. If you must loop, dry-run every item
-first, keeping only the last line of each output, then show the count and one example
-request, and wait for the reply before confirming the items.
+first, keeping only the last line of each output, then show the count and one example request,
+and wait for the reply before confirming the items.
 
 **Verify writes by reading back.** The product batch endpoints (items, stock, sort orders,
 purchase prices, relations, image relations) answer with a top-level `{"Message": "Success."}` that

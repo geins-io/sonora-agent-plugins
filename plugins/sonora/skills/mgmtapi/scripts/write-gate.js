@@ -4,15 +4,15 @@
 /**
  * The write gate: send.js sends a request only after it was shown to the user and the user has
  * replied. It applies wherever nothing else asks before send.js runs:
- *   - Codex, which runs sandboxed commands unasked, and the Copilot CLI once shell is allowed;
+ *   - Codex and the Copilot CLI, always, whether or not they also prompt;
  *   - Claude Code in a permission mode that does not prompt, such as auto or bypassPermissions.
  *     In its prompting modes the permission prompt is the gate, because the skill pre-approves
  *     reads only. An "always allow" rule for send.js is not visible here, so it is not gated.
  *
  * send.js records each dry run as a file. A UserPromptSubmit hook records each user message, and
- * Claude Code's permission mode with it. --confirm then needs a dry run of the same request made
- * before the user's latest message. A dry run lapses once the user sends the message after that,
- * so a "no" followed by anything else never turns into a yes.
+ * Claude Code's permission mode with it, so a mode switch counts from the next message. --confirm
+ * then needs a dry run of the same request made before the user's latest message. A dry run lapses
+ * at the message after that, so a "no" followed by anything else never turns into a yes.
  *
  * This stops an eager model from writing in one step. It is not a security boundary: anything that
  * can run send.js can also write these files.
@@ -23,11 +23,13 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const {
-  agentSession,
+  agentSessions,
   sessionStateDir,
   sessionFilePath,
+  pruneSessionState,
   listProfiles,
   parseArguments,
   fail,
@@ -59,12 +61,15 @@ function readTurn(id) {
   }
 }
 
-function dryRunPrefix(id) {
-  return path.basename(sessionFilePath(id, '.dryrun')).replace(/\.json$/, '.');
+/**
+ * One file per dry run, <session>.dryrun.<hash>.<ms>.json, so parallel runs never collide. Sending
+ * renames it to <session>.used.<hash>.<ms>.json; the rename is the claim.
+ */
+function entryPath(id, kind, hash, at) {
+  return sessionFilePath(id, `.${kind}.${hash}.${at}`);
 }
 
-/** One file per dry run, <session>.dryrun.<hash>.<ms>.json, so parallel runs never collide. */
-function listDryRuns(id) {
+function listEntries(id, kind) {
   let names;
   try {
     names = fs.readdirSync(sessionStateDir());
@@ -72,7 +77,7 @@ function listDryRuns(id) {
     return [];
   }
 
-  const prefix = dryRunPrefix(id);
+  const prefix = path.basename(sessionFilePath(id, `.${kind}`)).replace(/\.json$/, '.');
   return names
     .filter((name) => name.startsWith(prefix) && name.endsWith('.json'))
     .map((name) => {
@@ -84,19 +89,25 @@ function listDryRuns(id) {
 
 /** The session the gate applies to, or null where something else already asks. */
 function gatedSession() {
-  const session = agentSession();
-  if (!session) {
+  const sessions = agentSessions();
+
+  // Codex and Copilot never prompt before send.js, even when they run inside Claude Code and
+  // inherit its variable. Claude Code run inside them is gated as well, which fails closed.
+  const unprompted = sessions.find((session) => session.agent !== 'claude');
+  if (unprompted) {
+    return unprompted;
+  }
+
+  const claude = sessions[0];
+  if (!claude) {
     // A plain terminal: a person typed the command.
     return null;
   }
-  if (session.agent !== 'claude') {
-    return session;
-  }
 
   // No record means the hook has not run yet in this session, and Claude Code prompts by default.
-  const turn = readTurn(session.id);
+  const turn = readTurn(claude.id);
   const mode = turn && turn.permissionMode;
-  return mode && !PROMPTING_CLAUDE_MODES.includes(mode) ? session : null;
+  return mode && !PROMPTING_CLAUDE_MODES.includes(mode) ? claude : null;
 }
 
 function gated() {
@@ -137,7 +148,7 @@ function recordDryRun(requestDetails) {
     ensureStateDir();
     for (let at = Date.now(); ; at += 1) {
       try {
-        const file = sessionFilePath(session.id, `.dryrun.${hash}.${at}`);
+        const file = entryPath(session.id, 'dryrun', hash, at);
         fs.writeFileSync(file, '', { flag: 'wx', mode: 0o600 });
         break;
       } catch (error) {
@@ -164,9 +175,15 @@ function checkConfirm(requestDetails) {
   }
 
   const hash = requestHash(requestDetails);
-  const dryRuns = listDryRuns(session.id).filter((entry) => entry.hash === hash);
+  const dryRuns = listEntries(session.id, 'dryrun').filter((entry) => entry.hash === hash);
 
   if (dryRuns.length === 0) {
+    if (listEntries(session.id, 'used').some((entry) => entry.hash === hash)) {
+      throw new Error(
+        'Refused: this request was already sent once on that approval. To send it again, dry-run ' +
+          'it again and ask the user.'
+      );
+    }
     if (!stateWritable()) {
       throw new Error(
         `Refused: ${sessionStateDir()} is not writable for this agent, so no write can be ` +
@@ -175,8 +192,8 @@ function checkConfirm(requestDetails) {
     }
     throw new Error(
       'Refused: no dry run of this exact request is recorded. Run the same command without ' +
-        '--confirm, show the user the request, and wait for their reply. A dry run lapses once ' +
-        'the user has sent a second message after it.'
+        '--confirm, show the user the request, and wait for their reply. A dry run lapses at the ' +
+        "user's second message after it."
     );
   }
 
@@ -206,23 +223,40 @@ function checkConfirm(requestDetails) {
     );
   }
 
-  // Deleting the file claims the approval, so two parallel --confirm runs cannot share one.
+  // The rename claims the approval, so two parallel --confirm runs cannot share one. The loser
+  // sees ENOENT, or EPERM on Windows.
   for (const entry of fresh) {
     try {
-      fs.unlinkSync(entry.file);
+      fs.renameSync(entry.file, entryPath(session.id, 'used', entry.hash, entry.at));
       return;
     } catch (error) {
-      if (error.code !== 'ENOENT') {
+      if (!['ENOENT', 'EPERM'].includes(error.code)) {
         throw error;
       }
     }
   }
   throw new Error(
-    'Refused: the approval for this request was already used. Dry-run it again and ask the user.'
+    'Refused: this request was already sent once on that approval. To send it again, dry-run it ' +
+      'again and ask the user.'
   );
 }
 
-/** Records the user's message. Runs on every prompt, so it does nothing where Sonora is unused. */
+/**
+ * Whether Sonora is set up on this machine. The hook sees its own cwd and environment, not the
+ * agent shell's, so ~/.sonora existing is enough, and a config it cannot parse counts as set up.
+ */
+function inUse() {
+  if (fs.existsSync(path.join(os.homedir(), '.sonora'))) {
+    return true;
+  }
+  try {
+    return listProfiles().length > 0;
+  } catch (error) {
+    return true;
+  }
+}
+
+/** Records the user's message. Runs on every prompt, and does nothing where Sonora is not set up. */
 function hook() {
   let payload = {};
   try {
@@ -231,15 +265,15 @@ function hook() {
     return;
   }
 
-  const id = payload.session_id || payload.sessionId;
-  if (!id || listProfiles().length === 0) {
+  const id = String(payload.session_id || payload.sessionId || '');
+  if (!id || !inUse()) {
     return;
   }
 
-  // Dry runs shown before the previous message had that message as their answer. They lapse now.
-  const previous = readTurn(String(id));
+  const previous = readTurn(id);
   if (previous) {
-    for (const entry of listDryRuns(String(id))) {
+    // Dry runs shown before the previous message had that message as their answer. They lapse now.
+    for (const entry of [...listEntries(id, 'dryrun'), ...listEntries(id, 'used')]) {
       if (entry.at < previous.at) {
         try {
           fs.unlinkSync(entry.file);
@@ -248,11 +282,14 @@ function hook() {
         }
       }
     }
+  } else {
+    // A new session: sweep what old ones left behind.
+    pruneSessionState();
   }
 
   ensureStateDir();
   fs.writeFileSync(
-    turnPath(String(id)),
+    turnPath(id),
     `${JSON.stringify({ at: Date.now(), permissionMode: payload.permission_mode || null })}\n`,
     { mode: 0o600 }
   );
