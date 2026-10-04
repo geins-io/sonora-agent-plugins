@@ -3,14 +3,14 @@ name: mgmtapi
 description: Call the Sonora Management API (mgmtapi.geins.io/API) to read or write products, orders, users, campaigns, prices, webhooks and more. Use whenever a task means talking to a live Sonora account rather than changing local code.
 license: MIT
 compatibility: Requires Node.js 18+ and network access to mgmtapi.geins.io.
-allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/get.js *), Bash(node ${CLAUDE_SKILL_DIR}/scripts/profile.js *)
+allowed-tools: Bash(node "${CLAUDE_SKILL_DIR}/scripts/get.js" *), Bash(node "${CLAUDE_SKILL_DIR}/scripts/profile.js" *)
 ---
 
 # Sonora Management API
 
-Two entry points, split so reads run unprompted while every write asks. Never call the API with
-raw `curl`: credentials would land in the command line and the transcript, and paging, batching
-and retries would be hand-rolled per task.
+Two entry points, split so reads can run unprompted while writes need the user's agreement. Never
+call the API with raw `curl`: credentials would land in the command line and the transcript, and
+paging, batching and retries would be hand-rolled per task.
 
 Always invoke through `node`, exactly as written below. In Claude Code that form is what the
 pre-approved read permission matches.
@@ -21,9 +21,9 @@ this SKILL.md; substitute that absolute path in every command.
 ## Reads
 
 ```
-node ${CLAUDE_SKILL_DIR}/scripts/get.js --path "Product/1234" --query include=Names
-node ${CLAUDE_SKILL_DIR}/scripts/get.js --resource Brand --filter '{"ExternalIds":["abc"]}'
-node ${CLAUDE_SKILL_DIR}/scripts/get.js --resource Product --all --filter '{"UpdatedAfter":"2026-09-01T00:00:00Z"}'
+node "${CLAUDE_SKILL_DIR}/scripts/get.js" --path "Product/1234" --query include=Names
+node "${CLAUDE_SKILL_DIR}/scripts/get.js" --resource Brand --filter '{"ExternalIds":["abc"]}'
+node "${CLAUDE_SKILL_DIR}/scripts/get.js" --resource Product --all --filter '{"UpdatedAfter":"2026-09-01T00:00:00Z"}'
 ```
 
 `--resource X` posts the filter to `X/Query`. Adding `--all` walks `X/Query/{page}` instead, which
@@ -39,17 +39,25 @@ payloads into context.
 ## Writes
 
 ```
-node ${CLAUDE_SKILL_DIR}/scripts/send.js --method PUT --path "Product/1234" --body-file ./product.json --confirm
+node "${CLAUDE_SKILL_DIR}/scripts/send.js" --method PUT --path "Product/1234" --body-file ./product.json --confirm
 ```
 
 Without `--confirm` the script prints the request and sends nothing. Run it that way first, show
-the user the request, and add `--confirm` only after they agree. In agents that run shell commands
-without a prompt (Codex, Copilot), the script enforces this: `--confirm` is refused unless the same
-request was dry-run before the user's latest message. A refusal means stop and ask, not retry. Use `--body-file` for anything beyond a couple of fields. `send.js` refuses
-`GET`, so reads cannot arrive through the write path.
+the user the request, and add `--confirm` only after they agree.
+
+Wherever no permission prompt runs before `send.js` (Codex, Copilot, or Claude Code in a mode that
+does not prompt), the script enforces this: `--confirm` is refused unless the same request was
+dry-run before the user's latest message, and each dry run approves one send. A refusal says what
+is missing. Do what it says; never retry `--confirm` in the same turn.
+
+Use `--body-file` for anything beyond a couple of fields. `send.js` refuses `GET`, so reads cannot
+arrive through the write path.
 
 Before any bulk write: read the affected set, report the count, and get the user to confirm that
-number. Never loop the write script over a set you have not counted and shown.
+number. Never loop the write script over a set you have not counted and shown. Prefer the
+resource's batch endpoint, where one request covers the set. If you must loop, dry-run every item
+first, keeping only the last line of each output, then show the count and one example
+request, and wait for the reply before confirming the items.
 
 **Verify writes by reading back.** The product batch endpoints (items, stock, sort orders,
 purchase prices, relations, image relations) answer with a top-level `{"Message": "Success."}` that
@@ -110,9 +118,9 @@ With two or more configured and none selected, every call **fails** with the lis
 quietly using `default`. That is deliberate: production is a profile too.
 
 ```
-node ${CLAUDE_SKILL_DIR}/scripts/profile.js --list        # names, labels, where each resolves from
-node ${CLAUDE_SKILL_DIR}/scripts/profile.js --use prod    # record the choice for this session
-node ${CLAUDE_SKILL_DIR}/scripts/profile.js --current     # what is active, and why
+node "${CLAUDE_SKILL_DIR}/scripts/profile.js" --list        # names, labels, where each resolves from
+node "${CLAUDE_SKILL_DIR}/scripts/profile.js" --use prod    # record the choice for this session
+node "${CLAUDE_SKILL_DIR}/scripts/profile.js" --current     # what is active, and why
 ```
 
 When you have to choose one, ask the user (with `AskUserQuestion` where you have it) and use each
@@ -139,7 +147,7 @@ resolve them; nothing else needs to.
 To find out which source answers, without printing any value:
 
 ```
-node ${CLAUDE_SKILL_DIR}/scripts/get.js --check-credentials [--profile <name>]
+node "${CLAUDE_SKILL_DIR}/scripts/get.js" --check-credentials [--profile <name>]
 ```
 
 ### credentialCommand

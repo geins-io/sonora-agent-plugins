@@ -493,22 +493,32 @@ function formatProfileRows(profiles) {
 }
 
 /**
- * Environment variables that carry the agent's session id into a shell tool call, per harness. The
- * SessionStart hook is handed the same id on stdin and copies it into the first of these.
- * Observed in tool calls: COPILOT_AGENT_SESSION_ID in Copilot CLI 1.0.92, CODEX_SESSION_ID in Codex
- * 0.160.
+ * The variable each agent sets in a shell tool call to carry its session id (Copilot's and Codex's
+ * observed in Copilot CLI 1.0.92 and Codex 0.160). A nested agent inherits its parent's variable,
+ * so when several are set the first in this order wins. The SessionStart hook is handed the id on
+ * stdin and copies it into CLAUDE_CODE_SESSION_ID.
  */
-const SESSION_ID_VARIABLES = ['CLAUDE_CODE_SESSION_ID', 'COPILOT_AGENT_SESSION_ID', 'CODEX_SESSION_ID'];
+const SESSION_ID_VARIABLES = [
+  ['claude', 'CLAUDE_CODE_SESSION_ID'],
+  ['copilot', 'COPILOT_AGENT_SESSION_ID'],
+  ['codex', 'CODEX_SESSION_ID'],
+];
 
-/** Which session is asking. With none of the variables set there is no session state. */
-function sessionId() {
-  for (const name of SESSION_ID_VARIABLES) {
+/** Which agent and session is asking, or null outside any of them. */
+function agentSession() {
+  for (const [agent, name] of SESSION_ID_VARIABLES) {
     const id = process.env[name];
     if (id && id.trim() !== '') {
-      return id.trim();
+      return { agent, id: id.trim() };
     }
   }
   return null;
+}
+
+/** Which session is asking. Without one there is no session state. */
+function sessionId() {
+  const session = agentSession();
+  return session ? session.id : null;
 }
 
 function sessionStateDir() {
@@ -815,6 +825,7 @@ module.exports = {
   profileLabel,
   profilePrompt,
   effectiveProfile,
+  agentSession,
   sessionId,
   sessionStateDir,
   sessionFilePath,

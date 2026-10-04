@@ -4,7 +4,7 @@ description: List the Sonora profiles and choose which account this session work
 license: MIT
 argument-hint: "[profile name]"
 disable-model-invocation: true
-allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js *)
+allowed-tools: Bash(node "${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js" *)
 ---
 
 # Choose a Sonora profile
@@ -19,11 +19,15 @@ Do not read the scripts' source; their output is all you need.
 
 Requested profile: `$ARGUMENTS`
 
-If that line names a profile, run this, report the result in one line, and stop. Do not list the
-profiles or ask the user anything:
+That line is empty when no name was given. If it still shows a placeholder instead of a name, your
+agent did not fill it in: take the profile name, if any, from the user's message.
+
+If a profile name was given, run this with the name in place, report the result in one line, and
+stop. Do not list the profiles or ask the user anything. Never run it with a placeholder left in;
+the shell expands that to nothing:
 
 ```
-node ${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js --use $ARGUMENTS
+node "${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js" --use $ARGUMENTS
 ```
 
 If `--use` answers that no profile has that name, show the user its list of configured profiles and
@@ -32,7 +36,7 @@ ask which they meant.
 Only if no profile name was given, list them and let the user pick:
 
 ```
-node ${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js --list
+node "${CLAUDE_SKILL_DIR}/../mgmtapi/scripts/profile.js" --list
 ```
 
 Then ask the user (with `AskUserQuestion` where you have it), using each profile's label as the
@@ -40,8 +44,8 @@ option description, and record the answer with `--use <name>`. Report the choice
 stop; do not call the API afterwards unless the user asked for something else.
 
 If `--use` reports that it cannot record the selection (no session id, or the directory is not
-writable), tell the user the choice will be passed as
-`--profile <name>` on each call for the rest of the conversation, and do that.
+writable), tell the user the choice will be passed as `--profile <name>` on each call for the rest
+of the conversation, and do that.
 
 A profile shown as `no credentials` is configured but cannot resolve. Offer it only if the user
 insists, and say that it will fail until its `credentialCommand` or its `_<PROFILE>` env keys exist.

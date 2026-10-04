@@ -5,15 +5,19 @@ repository.
 
 ## What you get
 
-`/sonora:mgmtapi` — Claude reads and writes your Sonora account through two Node entry points bundled
+`mgmtapi` — the agent reads and writes your Sonora account through two Node entry points bundled
 with the skill, with the API's 162 endpoints across 21 resources documented locally so it picks the
 right route without probing.
 
-`/sonora:profile` — pick which Sonora account the session works with. With more than one configured,
-you are asked at the start of a session rather than left to remember a flag.
+`profile` — pick which Sonora account the session works with. With more than one configured, you
+are asked before the first call rather than left to remember a flag.
 
-Reads run without a permission prompt. Writes always prompt, and the skill requires a count and a
-preview before any bulk change.
+In Claude Code and the Copilot CLI these are `/sonora:mgmtapi` and `/sonora:profile`, in Codex
+`$sonora:mgmtapi` and `$sonora:profile`. You rarely need to type the first: it loads by itself.
+
+Nothing is written until you have seen the request and agreed: Claude Code asks before each write,
+and wherever no such prompt runs, the plugin refuses to send until you have replied (see
+[Command line](#command-line)). Bulk changes also need a count and a preview first.
 
 ## Using it
 
@@ -28,7 +32,7 @@ your account rather than changing local code.
 > Which customers ordered more than five times this year?
 ```
 
-Writes take the same route but stop for you first. Ask for the change, and Claude reads the
+Writes take the same route but stop for you first. Ask for the change, and the agent reads the
 affected set, reports the count, shows one example request and waits:
 
 ```
@@ -55,7 +59,7 @@ And to confirm a bulk write actually landed, because the batch endpoints report 
 > Read those back and compare against what you sent.
 ```
 
-If more than one account is configured, Claude asks which to use at the start of the session; see
+If more than one account is configured, the agent asks which to use before the first call; see
 [Profiles](#profiles). With one account it never asks.
 
 ## Setup
@@ -73,8 +77,8 @@ variables win over both, so CI needs no file. Copy `.env.sonora.example` for the
 a second account (`_<PROFILE>` suffix) or retarget the base URL. With one account configured there
 is nothing more to do — profiles only start asking anything of you once there are two.
 
-Credentials are never written to the repository, and the skill instructs Claude never to read or
-print those files.
+Credentials are never written to the repository, and the skill instructs the agent never to read
+or print those files.
 
 ## Upgrading from 3.x
 
@@ -265,12 +269,14 @@ runs nothing, so it never sets off a vault prompt per profile.
 
 #### Choosing one for a session
 
-`/sonora:profile` lists the profiles, asks which to use, and remembers the answer for the rest of the
-session. With more than one profile configured, a SessionStart hook raises the question before any
-call is made, so a session starts by naming the account it is about to touch.
+The `profile` skill lists the profiles, asks which to use, and remembers the answer for the rest of
+the session. With more than one profile configured, a SessionStart hook raises the question before
+any call is made, so a session starts by naming the account it is about to touch. The Copilot CLI
+runs that hook but does not show its output to the model, so there the question comes when the
+first call fails.
 
 ```
-/sonora:profile          # list and choose
+/sonora:profile          # list and choose (in Codex: $sonora:profile)
 /sonora:profile prod     # switch straight to prod
 ```
 
@@ -284,9 +290,10 @@ node scripts/profile.js --clear         # forget it
 
 The choice lives in `~/.sonora/sessions/<session id>.json` and holds a profile name, nothing else.
 Two sessions can therefore work against two accounts at once without interfering, and the file is
-swept after seven days. The session id comes from Claude Code or the Copilot CLI; in an agent that
-exposes none, or in a plain terminal, there is no session, so use `--profile` or
-`SONORA_MGMT_API_PROFILE` there.
+swept after seven days. The session id comes from Claude Code, the Copilot CLI or Codex. In a plain
+terminal there is none, and in Codex's sandbox the directory may not be writable; use `--profile` or
+`SONORA_MGMT_API_PROFILE` there. The agent switches to `--profile` by itself when `--use` cannot
+record the choice.
 
 Set `"profilePrompt"` to `"first-use"` to be asked lazily at the first API call instead of at session
 start, or `"never"` to be left alone:
@@ -309,8 +316,12 @@ quietly falling back to `default`:
 2 profiles are configured and none is selected for this session:
   labs  Labs        credentialCommand
   prod  Production  credentialCommand
-Choose one with /sonora:profile, or pass --profile <name>.
+Ask the user which one to work with, never guess, then record it with
+  node ".../scripts/profile.js" --use <name>
+or pass --profile <name> on every call.
 ```
+
+The message is addressed to the agent, which is the one reading it.
 
 A single-profile setup never sees any of this: no hook question, no error, no new flag.
 
@@ -370,7 +381,7 @@ installer from [nodejs.org](https://nodejs.org). See
 ## Layout
 
 ```
-hooks/hooks.json           SessionStart raises the profile question; UserPromptSubmit feeds the write gate
+hooks/hooks.json           SessionStart: profile question. UserPromptSubmit: write gate
 skills/profile/SKILL.md    /sonora:profile, the session profile picker
 skills/mgmtapi/
 ├── SKILL.md
@@ -381,7 +392,7 @@ skills/mgmtapi/
     ├── get.js             reads
     ├── send.js            writes, --confirm required
     ├── profile.js         lists profiles, records the session's choice
-    ├── write-gate.js      Codex and Copilot only: --confirm needs a dry run and a user reply since
+    ├── write-gate.js      where nothing prompts: --confirm needs a dry run and the user's reply
     └── sync-api-spec.js   maintainer tool, regenerates references/
 ```
 
@@ -398,11 +409,28 @@ node scripts/profile.js --list [--verify] | --use <name> | --current | --clear
 `get.js` cannot mutate: it issues `GET`, or the `Query` endpoints that read via `POST`. `send.js`
 prints the request and sends nothing without `--confirm`, and refuses `GET` outright.
 
-Claude Code asks before every `send.js` call, because the skill pre-approves reads only. Codex and
-the Copilot CLI may run it unasked, so there `send.js` also refuses `--confirm` unless the same
-request was dry-run before the user's latest message. A `UserPromptSubmit` hook records those
-messages in `~/.sonora/sessions/<session id>.writes.json`, which is why Codex needs that directory
-writable. The gate stops an eager model from writing in one step; it is not a security boundary.
+### The write gate
+
+In Claude Code's default mode, the permission prompt before each `send.js` call is what stops a
+write: the skill pre-approves reads only. Nothing prompts in these cases:
+
+- Codex, which runs sandboxed commands without asking
+- the Copilot CLI, once you allow shell commands
+- Claude Code in a mode that does not prompt, such as auto or bypassPermissions
+
+There, `send.js --confirm` is refused unless the same request was dry-run before your latest
+message. Each dry run approves one send, and lapses once you have sent another message after the
+one that followed it, so a "no" never turns into a yes later. A bulk change is approved by
+dry-running every item and replying once.
+
+How it knows: `send.js` leaves a file per dry run in `~/.sonora/sessions`, and a `UserPromptSubmit`
+hook records each of your messages there, with Claude Code's permission mode. That is why Codex
+needs the directory writable and the hook trusted. The hook runs `node` on every prompt in every
+session, a few tens of milliseconds, and writes nothing when no Sonora profile is configured.
+
+Not covered: an "always allow" rule for `send.js` in Claude Code's default mode is invisible to the
+plugin, so such writes are not gated. The gate stops an eager model from writing in one step; it is
+not a security boundary, since anything that can run `send.js` can also write those files.
 
 ## Updating the reference
 

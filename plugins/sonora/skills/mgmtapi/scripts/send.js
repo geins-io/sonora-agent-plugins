@@ -4,7 +4,8 @@
 /**
  * Writes to the Sonora Management API. Prints the request and sends nothing unless --confirm is
  * passed, so an unattended run has to state its intent on the command line where a reviewer or a
- * permission prompt can see it.
+ * permission prompt can see it. Where no permission prompt runs, write-gate.js also requires the
+ * user to have replied after a dry run of the same request.
  *
  * Usage:
  *   node send.js --method PUT --path "Product/1234" --body-file ./product.json --confirm
@@ -58,6 +59,7 @@ async function main() {
 
   if (!options.confirm) {
     if (!writeGate.gated()) {
+      // Claude Code's permission prompt, or a person at a terminal, is the gate here.
       process.stdout.write('Not sent. Re-run with --confirm to send this request.\n');
       return;
     }
@@ -73,9 +75,22 @@ async function main() {
     return;
   }
 
+  const gated = writeGate.gated();
   writeGate.checkConfirm(requestDetails);
 
-  const result = await request(requestDetails);
+  let result;
+  try {
+    result = await request(requestDetails);
+  } catch (error) {
+    // The approval is claimed before sending, so a parallel --confirm cannot use it too. A failed
+    // send may still have landed, so retrying is the user's call, not the script's.
+    if (gated) {
+      error.message +=
+        '\nThe approval for this request is used up. Read back to check whether it landed, ' +
+        'then dry-run again and ask the user before retrying.';
+    }
+    throw error;
+  }
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
