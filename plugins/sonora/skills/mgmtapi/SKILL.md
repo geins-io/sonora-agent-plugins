@@ -44,9 +44,12 @@ the user the request. Use `--body-file` for anything beyond a couple of fields. 
 Before any bulk write: read the affected set, report the count, and get the user to confirm that
 number. Never loop the write script over a set you have not counted and shown.
 
-**Verify writes by reading back.** The batch endpoints return `{"Message": "Success."}` with
-`UpdateCount`, `Invalid` and `NotFound` all null, even on a write that changed hundreds of rows.
-The response is not evidence. A re-read compared against what you sent is.
+**Verify writes by reading back.** The product batch endpoints (items, stock, sort orders,
+purchase prices, relations, image relations) answer with a top-level `{"Message": "Success."}` that
+has no counts; the real `UpdateCount`, `Invalid` and `NotFound` sit under `Resource`, and on an error
+the same object comes back unwrapped. Read the counts from `Resource`, and treat any `Invalid` or
+`NotFound` row as a partial failure. Even then the response is not proof. A re-read compared against
+what you sent is.
 
 ## Finding the route
 
