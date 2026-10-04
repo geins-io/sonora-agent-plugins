@@ -1,8 +1,8 @@
 # Brand
 
-Generated on 2026-09-25 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
+Generated on 2026-10-04 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
-Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
+Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.
 
 | Method | Path | Summary |
 |---|---|---|
@@ -11,6 +11,15 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | GET | `Brand/{id}` | Get brand |
 | PUT | `Brand/{id}` | Update brand |
 | POST | `Brand/Query` | Query brands |
+
+## Pitfalls
+
+Behaviour the spec does not state. Read before writing to this resource. Items marked *(unverified)* were reported from another client and have not been reproduced against a live account; trust them less, and read back to check.
+
+- **`POST Brand` needs an `ExternalId`**, though the spec does not mark it required. Without one the
+  API answers 500 `A database error occured.` Use a slug of the name when the user gives none.
+- **`PUT Brand/{id}` requires `Name`, so treat it as a full replace**: read the brand, change what you
+  need, and send the whole body back. *(unverified)*
 
 ## POST Brand
 

@@ -374,6 +374,7 @@ hooks/hooks.json           SessionStart, raises the profile question
 skills/mgmtapi/
 ├── SKILL.md
 ├── references/        generated endpoint and schema reference, one file per resource
+├── notes/             hand-written pitfalls, merged into references/ by sync-api-spec.js
 └── scripts/
     ├── sonora-api.js      transport: credentials, profiles, auth, retries, paging, batching
     ├── get.js             reads
@@ -405,3 +406,9 @@ node scripts/sync-api-spec.js --spec ../geins-web/content/api-refs/rest/mgmtapi.
 
 It finds a `geins-web` checkout beside any ancestor directory on its own, so `--spec` is usually
 unnecessary. Regenerate when the spec changes, then bump the plugin version.
+
+Behaviour the spec does not state lives in `notes/<resource>.md`, one file per resource, named like
+the reference file it belongs to. The generator renders each one as a Pitfalls section at the top of
+that resource's reference and marks it in `endpoints.md`, so edit the note and regenerate rather than
+editing `references/`. A notes file that matches no resource fails the run, which catches a resource
+renamed in the spec. Mark anything not reproduced against a live account `*(unverified)*`.

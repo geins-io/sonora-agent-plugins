@@ -11,6 +11,9 @@
  *   node scripts/sync-api-spec.js --spec <path to mgmtapi.yaml> [--out <dir>]
  *
  * --spec defaults to a geins-web checkout found beside any ancestor of this plugin.
+ *
+ * notes/<resource>.md holds hand-written pitfalls the spec does not state. Each one is rendered as a
+ * Pitfalls section in that resource's reference file, so regenerating never loses them.
  */
 
 const fs = require('fs');
@@ -20,6 +23,7 @@ const { createRequire } = require('module');
 const SKILL_ROOT = path.resolve(__dirname, '..');
 const SPEC_RELATIVE_PATH = path.join('geins-web', 'content', 'api-refs', 'rest', 'mgmtapi.yaml');
 const DEFAULT_OUT = path.join(SKILL_ROOT, 'references');
+const NOTES_DIR = path.join(SKILL_ROOT, 'notes');
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 const MAX_SCHEMA_DEPTH = 3;
 
@@ -171,6 +175,30 @@ function slugify(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untagged';
 }
 
+/** Reads notes/<slug>.md for every resource, failing on a file that matches no resource. */
+function readNotes(slugs) {
+  const notes = new Map();
+
+  if (!fs.existsSync(NOTES_DIR)) {
+    return notes;
+  }
+
+  for (const file of fs.readdirSync(NOTES_DIR)) {
+    if (!file.endsWith('.md')) {
+      continue;
+    }
+
+    const slug = file.slice(0, -'.md'.length);
+    if (!slugs.has(slug)) {
+      throw new Error(`notes/${file} matches no resource in the spec. Rename or remove it.`);
+    }
+
+    notes.set(slug, fs.readFileSync(path.join(NOTES_DIR, file), 'utf8').trim());
+  }
+
+  return notes;
+}
+
 function readOperations(spec) {
   const operations = [];
 
@@ -240,11 +268,11 @@ function renderSchema(name, schemas, lines) {
   lines.push('');
 }
 
-function renderTagFile(tag, tagOperations, schemas, generatedOn) {
+function renderTagFile(tag, tagOperations, schemas, generatedOn, notes) {
   const lines = [`# ${tag}`, ''];
   lines.push(`Generated on ${generatedOn} from the Sonora Management API spec. Do not edit; regenerate with \`node scripts/sync-api-spec.js\`.`);
   lines.push('');
-  lines.push('Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.');
+  lines.push('Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.');
   lines.push('');
   lines.push('| Method | Path | Summary |');
   lines.push('|---|---|---|');
@@ -257,6 +285,15 @@ function renderTagFile(tag, tagOperations, schemas, generatedOn) {
     lines.push(`| ${operation.method} | \`${operation.callPath}\` | ${operation.summary} |`);
   }
   lines.push('');
+
+  if (notes) {
+    lines.push('## Pitfalls');
+    lines.push('');
+    lines.push('Behaviour the spec does not state. Read before writing to this resource. Items marked *(unverified)* were reported from another client and have not been reproduced against a live account; trust them less, and read back to check.');
+    lines.push('');
+    lines.push(notes);
+    lines.push('');
+  }
 
   const referenced = new Set();
 
@@ -330,7 +367,7 @@ function renderTagFile(tag, tagOperations, schemas, generatedOn) {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
-function renderIndex(groups, spec, generatedOn) {
+function renderIndex(groups, spec, generatedOn, notes) {
   const version = (spec.info || {}).version || 'unknown';
   const lines = ['# Sonora Management API endpoint index', ''];
 
@@ -338,18 +375,21 @@ function renderIndex(groups, spec, generatedOn) {
   lines.push('');
   lines.push('Open only the file for the resource you need.');
   lines.push('');
-  lines.push('| Resource | Endpoints | Paged query | File |');
-  lines.push('|---|---|---|---|');
+  lines.push('| Resource | Endpoints | Paged query | Pitfalls | File |');
+  lines.push('|---|---|---|---|---|');
 
   for (const [tag, tagOperations] of groups) {
     const paged = tagOperations.some((operation) => /\/Query\/\{/.test(operation.route)) ? 'yes' : '';
-    lines.push(`| ${tag} | ${tagOperations.length} | ${paged} | [${slugify(tag)}.md](./${slugify(tag)}.md) |`);
+    const pitfalls = notes.has(slugify(tag)) ? 'yes' : '';
+    lines.push(`| ${tag} | ${tagOperations.length} | ${paged} | ${pitfalls} | [${slugify(tag)}.md](./${slugify(tag)}.md) |`);
   }
 
   lines.push('');
   lines.push('Read the `Returns` line before parsing a response. Most endpoints wrap the payload in an envelope, under `Resource` alongside `Message` and `Details`, but an unpaged `Query` returns a bare array.');
   lines.push('');
-  lines.push('A resource marked "paged query" exposes `POST {Resource}/Query/{page}`, which is what `Get-SonoraApi.ps1 -All` walks. The rest expose only the unpaged `POST {Resource}/Query`.');
+  lines.push('A resource marked "pitfalls" opens with behaviour the spec does not state. Read it before writing to that resource.');
+  lines.push('');
+  lines.push('A resource marked "paged query" exposes `POST {Resource}/Query/{page}`, which is what `get.js --all` walks. The rest expose only the unpaged `POST {Resource}/Query`.');
 
   return lines.join('\n');
 }
@@ -380,6 +420,7 @@ function main() {
   }
 
   const groups = [...grouped.entries()].sort((left, right) => left[0].localeCompare(right[0]));
+  const notes = readNotes(new Set(groups.map(([tag]) => slugify(tag))));
 
   fs.mkdirSync(options.out, { recursive: true });
   for (const file of fs.readdirSync(options.out)) {
@@ -391,12 +432,12 @@ function main() {
   for (const [tag, tagOperations] of groups) {
     fs.writeFileSync(
       path.join(options.out, `${slugify(tag)}.md`),
-      `${renderTagFile(tag, tagOperations, schemas, generatedOn)}\n`,
+      `${renderTagFile(tag, tagOperations, schemas, generatedOn, notes.get(slugify(tag)))}\n`,
       'utf8'
     );
   }
 
-  fs.writeFileSync(path.join(options.out, 'endpoints.md'), `${renderIndex(groups, spec, generatedOn)}\n`, 'utf8');
+  fs.writeFileSync(path.join(options.out, 'endpoints.md'), `${renderIndex(groups, spec, generatedOn, notes)}\n`, 'utf8');
 
   console.log(`Wrote ${operations.length} endpoints across ${groups.length} resources to ${options.out}`);
 }

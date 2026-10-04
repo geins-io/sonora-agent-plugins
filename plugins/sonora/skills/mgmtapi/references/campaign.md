@@ -1,8 +1,8 @@
 # Campaign
 
-Generated on 2026-09-25 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
+Generated on 2026-10-04 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
-Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
+Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.
 
 | Method | Path | Summary |
 |---|---|---|
@@ -12,6 +12,25 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | PUT | `Campaign/{id}` | Updates a campaign. |
 | GET | `Campaign/List` | Lists all campaigns. |
 | GET | `Campaign/Types` | Gets all campaign types. |
+
+## Pitfalls
+
+Behaviour the spec does not state. Read before writing to this resource. Items marked *(unverified)* were reported from another client and have not been reproduced against a live account; trust them less, and read back to check.
+
+- **`UseSalePrice` defaults to `true` when left out.** That is the admin's "Only include discounted
+  products" toggle, so a promo code created without it silently applies to sale items only. Send
+  `"UseSalePrice": false` unless the user asked for that restriction.
+- **`CampaignTypeId` values belong to the account.** Read `Campaign/Types` and match by name; do not
+  assume 3 is Percentage. Percentage types take `PercentageValue`, fixed-amount types take `Amounts`.
+- **Amounts are objects keyed by currency**, for `Amounts`, `Prices` and `MinimumPurchaseAmounts`:
+  `{"SEK": 50, "EUR": 5}`, never a bare number.
+- **A code campaign (`CampaignBaseType` 2) needs a `PromoCode`; cart (1) and product (3) campaigns do
+  not.** Leave `ProductSelection` out entirely on a code campaign rather than sending `null`.
+  *(unverified)*
+- **Reads return enums as names, writes take numbers.** A campaign read back shows
+  `"CampaignBaseType": "code"`, but a write must send `2`. Convert before re-sending a read body.
+- **Inside `ProductSelection`**, `Include`/`Exclude` use `Condition` 0 = AND, 1 = OR, and each price
+  rule uses `Condition` 0 = less than, 1 = greater than, 2 = equal. *(unverified)*
 
 ## POST Campaign
 

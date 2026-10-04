@@ -1,8 +1,8 @@
 # Variant
 
-Generated on 2026-09-25 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
+Generated on 2026-10-04 from the Sonora Management API spec. Do not edit; regenerate with `node scripts/sync-api-spec.js`.
 
-Paths are relative to the base URL the scripts already hold, so pass them to `-Path` as written.
+Paths are relative to the base URL the scripts already hold, so pass them to `--path` as written.
 
 | Method | Path | Summary |
 |---|---|---|
@@ -21,6 +21,19 @@ Paths are relative to the base URL the scripts already hold, so pass them to `-P
 | GET | `VariantGroup/{groupId}` | Get variant group (group id) |
 | PUT | `VariantGroup/{groupId}` | Update variant group |
 | PUT | `VariantGroup/{groupId}/{productId}` | Add product to variant group |
+
+## Pitfalls
+
+Behaviour the spec does not state. Read before writing to this resource. Items marked *(unverified)* were reported from another client and have not been reproduced against a live account; trust them less, and read back to check.
+
+- **A product belongs to at most one variant group.** *(unverified)*
+- **The group's main product is the first one attached, and cannot be changed afterwards**; there is
+  no writable main product field. Attach the intended main product first. Deleting and recreating a
+  group gives it a new id and a new main product. *(unverified)*
+- **Variant labels must exist before products use them.** Read `Variant/Labels` and create missing
+  ones with `POST Variant/Label` first. *(unverified)*
+- **`include=Variants` returns the whole group's entries on every member.** Filter by `ProductId` to
+  get one product's own dimension values. *(unverified)*
 
 ## DELETE Variant/{productId}
 
