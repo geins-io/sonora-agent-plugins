@@ -1,7 +1,8 @@
-# Litium Claude Code plugins
+# Litium agent plugins
 
-A [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) for working with
-Litium Sonora from Claude Code.
+A plugin marketplace for working with Litium Sonora from Claude Code, the GitHub Copilot CLI or
+OpenAI Codex. All three read the same
+[Claude Code marketplace format](https://code.claude.com/docs/en/plugin-marketplaces).
 
 ## Prerequisites
 
@@ -28,13 +29,13 @@ To keep several versions side by side, use [nvm](https://github.com/nvm-sh/nvm) 
 or [nvm-windows](https://github.com/coreybutler/nvm-windows) and then `nvm install --lts`.
 
 Open a new terminal afterwards so the PATH change is picked up, and run `node --version` again to
-confirm. Claude Code reads the PATH of the shell it was started from, so restart it too if it was
+confirm. The agent reads the PATH of the shell it was started from, so restart it too if it was
 already running.
 
 ## Install
 
 ```
-/plugin marketplace add geins-io/sonora-claude-plugins
+/plugin marketplace add geins-io/sonora-agent-plugins
 /plugin install sonora@litium-plugins
 ```
 
@@ -42,6 +43,65 @@ already running.
 same wherever the repository is hosted.
 
 If the install summary says `Run /reload-plugins to activate.`, run that.
+
+### Other agents
+
+GitHub Copilot CLI and OpenAI Codex read this same marketplace, so the same repository and plugin
+name install there too:
+
+```
+copilot plugin marketplace add geins-io/sonora-agent-plugins
+copilot plugin install sonora@litium-plugins
+
+codex plugin marketplace add geins-io/sonora-agent-plugins
+codex plugin add sonora@litium-plugins
+```
+
+Credentials and profiles are shared across all three, since they live in `~/.sonora`.
+
+Neither can be relied on to ask before a write: Codex runs sandboxed commands without asking, and
+Copilot does once you allow shell commands. So in both the plugin always gates writes itself: the
+agent has to show you the request, and you have to reply, before it can send it. See
+[the write gate](plugins/sonora/README.md#the-write-gate).
+
+**Copilot CLI**
+
+- Network access is approved per domain. Approve `mgmtapi.geins.io` when asked, or start with
+  `--allow-url=mgmtapi.geins.io`.
+- It runs the SessionStart hook but does not show its output to the model, so with several
+  profiles you are asked when the first call fails rather than at session start.
+- The profile picker is `/sonora:profile`, as in Claude Code.
+- VS Code's Copilot agent mode picks up plugins installed by the CLI. That is untested: if VS Code
+  does not set `COPILOT_AGENT_SESSION_ID` for shell commands, profiles are not remembered there and
+  writes are not gated.
+
+**Codex**
+
+- It runs a plugin's hooks only after you trust them in `/hooks`. Trust both of sonora's:
+  SessionStart (`profile.js --hook`) raises the profile question, and UserPromptSubmit
+  (`write-gate.js --hook`) records your replies. Without the second, every write is refused. Codex
+  asks again when an update changes a hook.
+- The profile picker is `$sonora:profile`.
+- The plugin keeps session state in `~/.sonora/sessions`. Codex's sandbox writes only inside the
+  workspace, or nowhere in read-only mode, so run in workspace-write mode and make that directory
+  writable. If it is not, a chosen profile is passed as `--profile` on each call, and **writes to
+  the API are refused**.
+
+  ```
+  mkdir -p ~/.sonora/sessions
+  ```
+
+  ```toml
+  # ~/.codex/config.toml
+  [sandbox_workspace_write]
+  writable_roots = ["C:\\Users\\<you>\\.sonora\\sessions"]   # or "/home/<you>/.sonora/sessions"
+  ```
+
+- On Windows, use `[windows] sandbox = "unelevated"`. The `elevated` mode runs commands as a
+  separate user that cannot read the plugin's files.
+- Tested on Windows, where the API was reachable from workspace-write mode without enabling network
+  access. If calls fail with a network error on macOS or Linux, add `network_access = true` under
+  `[sandbox_workspace_write]`.
 
 ## Credentials
 
@@ -92,13 +152,15 @@ how to store the secret in each.
 A second key under `profiles` is a second account. Each resolves independently, so production can
 sit behind a vault while a scratch account stays in a file.
 
-Once there are two, `/sonora:profile` asks which one the session works with, at the start of the
-session, and every call after that uses it without a flag:
+Once there are two, the agent asks which one the session works with before the first call, and
+every call after that uses it without a flag. To choose or switch yourself:
 
 ```
 /sonora:profile          # list them and choose
 /sonora:profile prod     # switch straight to prod
 ```
+
+The same works in the Copilot CLI; Codex writes it `$sonora:profile`.
 
 Nothing is assumed on your behalf: with two profiles configured and none chosen, a call fails and
 lists them instead of quietly using `default`. With a single profile configured, none of this
@@ -120,13 +182,13 @@ means talking to your account rather than changing local code:
 > How many orders were created in the last 30 days, by status?
 ```
 
-Claude picks the route from the bundled endpoint reference, calls the API through the plugin's
-scripts, and answers. Reads run without a permission prompt.
+The agent picks the route from the bundled endpoint reference, calls the API through the plugin's
+scripts, and answers. In Claude Code, reads run without a permission prompt.
 
 ### Your first session
 
-If you have more than one account configured, Claude asks which one to work with before anything
-else happens, and every call for the rest of the session uses it:
+If you have more than one account configured, the agent asks which one to work with before the
+first call, and every call for the rest of the session uses it. In Claude Code that looks like:
 
 ```
 > Which profile do you want to work with?
@@ -159,14 +221,16 @@ gets a sharper one.
 
 ### Changing things
 
-Writes always prompt, and the skill will not make a bulk change without showing you a count first:
+Nothing is written until you agree. Claude Code asks before each write; in Codex, in Copilot, and in
+Claude Code modes that do not prompt, the plugin refuses to send a request you have not been shown
+and answered. A bulk change also needs a count first:
 
 ```
 > Set Custom1 sort orders on all products, scarcest stock first.
 ```
 
-Claude reads the affected products, tells you how many it found, shows one example request, and
-waits. Nothing is sent until you say so. Every write names the account it is about to touch:
+The agent reads the affected products, tells you how many it found, shows one example request, and
+waits. Every write names the account it is about to touch:
 
 ```
 PUT Product/1234  (profile prod — Production, from session selection)
@@ -190,10 +254,10 @@ Useful when you want no ambiguity about the account or the shape of the answer:
 
 ## Plugins
 
-| Plugin | Provides | What it does |
-| --- | --- | --- |
-| `sonora` | `/sonora:mgmtapi` | Reads and writes the Sonora Management API, with the full endpoint reference bundled |
-| `sonora` | `/sonora:profile` | Lists the configured accounts and picks the one this session works with |
+| Plugin | Claude Code and Copilot CLI | Codex | What it does |
+| --- | --- | --- | --- |
+| `sonora` | `/sonora:mgmtapi` | `$sonora:mgmtapi` | Reads and writes the Sonora Management API, with the full endpoint reference bundled |
+| `sonora` | `/sonora:profile` | `$sonora:profile` | Lists the configured accounts and picks the one this session works with |
 
 ## Development
 
@@ -201,6 +265,18 @@ Test without installing:
 
 ```
 claude --plugin-dir ./plugins/sonora
+```
+
+The same directory loads in the Copilot CLI with `copilot --plugin-dir ./plugins/sonora`, and
+`copilot --plugin-dir ./plugins/sonora skill list` reports skills that fail to load.
+
+Codex has no such flag. Add the checkout as a local marketplace; Codex installs a copy, so remove
+and add the plugin again after each change:
+
+```
+codex plugin marketplace add .
+codex plugin add sonora@litium-plugins
+codex plugin remove sonora@litium-plugins   # before re-adding
 ```
 
 Validate before publishing, and bump `version` in `plugins/sonora/.claude-plugin/plugin.json` on

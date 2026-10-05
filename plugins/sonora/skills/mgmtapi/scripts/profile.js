@@ -87,7 +87,9 @@ function clear() {
 }
 
 /**
- * SessionStart cannot ask anything itself, so it hands Claude the list and the instruction to ask.
+ * SessionStart cannot ask anything itself, so it hands the agent the list and the instruction to ask.
+ * Copilot CLI runs the hook but (as of 1.0.92) drops its context, which is why the no-selection error
+ * from effectiveProfile carries the same instruction.
  * Everything it reports comes off disk, which makes it correct for every source including compact,
  * where it re-injects a choice the model has already lost.
  */
@@ -99,8 +101,10 @@ function hook() {
     // Run by hand, or handed something unparseable. Fall back to the environment.
   }
 
-  if (payload.session_id) {
-    process.env.CLAUDE_CODE_SESSION_ID = String(payload.session_id);
+  // Claude Code, Codex and Copilot's PascalCase events send session_id; Copilot's camelCase sessionId.
+  const payloadSessionId = payload.session_id || payload.sessionId;
+  if (payloadSessionId) {
+    process.env.CLAUDE_CODE_SESSION_ID = String(payloadSessionId);
   }
 
   const context = hookContext();
@@ -144,15 +148,19 @@ function hookContext() {
       ? 'Before the first Sonora Management API call in this session, ask'
       : 'Ask';
 
+  const record = sessionId()
+    ? ['then record the answer with:', `  node "${path.resolve(__filename)}" --use <name>`]
+    : ['then pass --profile <name> on every Sonora call; this agent has no session to record it in.'];
+
   return [
     `Sonora Management API: ${profiles.length} profiles are configured and none is selected for this session.`,
     '',
     ...formatProfileRows(profiles),
     '',
-    `${when} the user which one to work with, using AskUserQuestion, then record the answer with:`,
-    `  node "${path.resolve(__filename)}" --use <name>`,
+    `${when} the user which one to work with (with AskUserQuestion where you have it), ${record[0]}`,
+    ...record.slice(1),
     '',
-    'Until one is recorded, every Sonora API call fails with this same list.',
+    'Until one is chosen, every Sonora API call fails with this same list.',
   ].join('\n');
 }
 
