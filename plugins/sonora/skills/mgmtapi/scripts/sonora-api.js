@@ -22,6 +22,8 @@ const PROFILE_PROMPTS = ['session', 'first-use', 'never'];
 let envFileValues = null;
 let configValues = null;
 let configTopLevel = null;
+let userAgentValue = null;
+let personalDataNoticeShown = false;
 const credentialCache = new Map();
 
 /**
@@ -666,7 +668,44 @@ function authHeaders(credential) {
     Authorization: `Basic ${basic}`,
     'X-ApiKey': credential.apiKey,
     Accept: 'application/json',
+    'User-Agent': userAgent(),
   };
+}
+
+/**
+ * Names the plugin and its version, so agent traffic is recognisable in the API logs. Identifies
+ * the caller only; what an API user may see is decided by the API user, not by this header.
+ * Resolved against __dirname on purpose: the manifest ships with the plugin, not the repository.
+ */
+function userAgent() {
+  if (userAgentValue === null) {
+    try {
+      const manifestPath = path.join(__dirname, '..', '..', '..', '.claude-plugin', 'plugin.json');
+      const { version } = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      userAgentValue = version ? `sonora-mgmtapi-skill/${version}` : 'sonora-mgmtapi-skill';
+    } catch (error) {
+      userAgentValue = 'sonora-mgmtapi-skill';
+    }
+  }
+
+  return userAgentValue;
+}
+
+/**
+ * API users with the MaskPersonalData setting get personal data masked, and the API flags those
+ * responses with `X-Personal-Data: masked`. Said once per process, on stderr so stdout stays pure
+ * JSON, and so a paged read does not repeat it.
+ */
+function notePersonalDataMasking(response, profile) {
+  if (personalDataNoticeShown || response.headers.get('x-personal-data') !== 'masked') {
+    return;
+  }
+
+  personalDataNoticeShown = true;
+  process.stderr.write(
+    `Personal data is masked for profile '${profile}': pii_... values are pseudonyms, and names, ` +
+      'phone numbers and street addresses are null.\n'
+  );
 }
 
 function buildUrl(apiPath, query) {
@@ -718,6 +757,7 @@ async function request({ method, apiPath, query, body, profile = 'default' }) {
     const text = await response.text();
 
     if (response.ok) {
+      notePersonalDataMasking(response, profile);
       return text.trim() === '' ? null : JSON.parse(text);
     }
 

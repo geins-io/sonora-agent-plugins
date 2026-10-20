@@ -80,6 +80,23 @@ is nothing more to do — profiles only start asking anything of you once there 
 Credentials are never written to the repository, and the skill instructs the agent never to read
 or print those files.
 
+### Use a masked API user for agents
+
+Everything the agent reads ends up in the model's context and the session transcript. Rather than
+reusing your own API user, create one for the agent and give it the user setting
+`MaskPersonalData` = `true`. The Management API then masks personal data for that user:
+
+- Emails and personal ids become stable pseudonyms like `pii_3f9a1c0b7d2e`, so the agent can still
+  group orders by customer.
+- Names, phone numbers, street addresses and free text are `null`, and zip codes keep two
+  characters.
+- Writes that carry personal data are refused with a 403.
+
+The API enforces this per API user, so the agent cannot switch it off. Masked responses carry the
+header `X-Personal-Data: masked`, and the scripts mention it once per run. Every request also sends
+`User-Agent: sonora-mgmtapi-skill/<version>`, which shows plugin traffic in the API logs. That
+header is not access control.
+
 ## Upgrading from 3.x
 
 The plugin was called `geins` before 4.0.0, and everything it reads was named to match. The old

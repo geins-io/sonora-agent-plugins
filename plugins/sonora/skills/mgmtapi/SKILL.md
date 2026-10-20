@@ -105,6 +105,30 @@ off a bare array.
   5xx, so it takes about 15 seconds to surface. Check the body against the resource's Pitfalls
   rather than retrying again.
 
+## Personal data
+
+An API user can have the `MaskPersonalData` setting, meant for agents. Its responses carry
+`X-Personal-Data: masked`, and the scripts then say so once on stderr.
+
+- **`pii_` values are pseudonyms**, eg `pii_3f9a1c0b7d2e`. Emails, personal ids and usernames
+  become one, and so does each email in a campaign's `SelectedUsers`. The same value always gives
+  the same pseudonym within an account, so group, count and join on them, but never present one as
+  an email or try to work out the real value behind it.
+- **`null` names, phone numbers, street addresses, cities and free text, and two-character zip
+  codes, are masked, not missing.** Don't report them as data quality problems, and don't try to
+  recover them through another endpoint.
+- **A 403 `This API user is not allowed to write personal data.` is final.** Writes that carry
+  personal data, such as creating or updating users or suppliers with contact details, are refused
+  for this API user. Don't retry, strip fields to sneak a write past it, or switch to a profile that
+  is not masked. Tell the user.
+- **A 503 `Personal data cannot be masked right now.` is temporary.** Retry later rather than
+  switching profile.
+- Lookups by an email the user gave you (`User/{email}`, `Order/Count/{email}`, an `Email` filter)
+  still work, and the result comes back masked.
+
+Without the setting nothing is masked, and everything you read lands in this conversation. Fetch
+personal data only when the task needs it, and select only those fields with `jq`.
+
 ## Profiles
 
 A profile is one Sonora account. Which one a call uses is decided once, in this order:
@@ -140,6 +164,10 @@ Three values from an API User in Sonora Merchant Center, read in this order:
 3. `.env.sonora` in the repository you are working in, then `~/.sonora/.env`
 
 A second account is the same three keys suffixed with `_<PROFILE>`.
+
+Agents should use an API user of their own with the `MaskPersonalData` setting, so customer data
+reaches them masked; see [Personal data](#personal-data). If the user asks how to set one up,
+point them there rather than at their own API user.
 
 Never read, print or echo the env files, and never include their values in output. The scripts
 resolve them; nothing else needs to.
